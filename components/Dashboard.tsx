@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Loader2, TrendingUp, Calendar, FileText, Sparkles, AlertCircle } from 'lucide-react';
+import { Loader2, TrendingUp, Calendar, FileText, Sparkles, AlertCircle } from 'lucide-react';
 import { IPONews } from '@/types';
 import ArticleCard from './ArticleCard';
 import SearchBar from './SearchBar';
@@ -69,8 +69,14 @@ export default function Dashboard() {
       }
 
       if (data.articles) {
-        setArticles(data.articles);
-        console.log(`✅ ${data.articles.length}개의 기사를 불러왔습니다.`);
+        // 최신순으로 정렬 (created_at 기준)
+        const sortedArticles = [...data.articles].sort((a, b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return dateB - dateA; // 최신순 (내림차순)
+        });
+        setArticles(sortedArticles);
+        console.log(`✅ ${sortedArticles.length}개의 기사를 불러왔습니다.`);
       } else {
         setArticles([]);
         console.log('⚠️ 불러온 데이터가 없습니다.');
@@ -142,22 +148,29 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* 최상단 검색 필드 */}
+      <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <SearchBar onSearch={handleSearch} loading={loading || initialLoading} />
+        </div>
+      </div>
+
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-[#3182F6] flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-white" />
+      <header className="bg-white border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#3182F6] flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">공모주 정보</h1>
-              <p className="text-sm text-gray-500">AI로 요약한 최신 공모주 뉴스</p>
+              <h1 className="text-xl font-bold text-gray-900">공모주 정보</h1>
+              <p className="text-xs text-gray-500">AI로 요약한 최신 공모주 뉴스</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Connection Error Message */}
         {connectionError && (
           <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl">
@@ -173,11 +186,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        {/* Search Bar */}
-        <div className="mb-8">
-          <SearchBar onSearch={handleSearch} loading={loading || initialLoading} />
-        </div>
 
         {/* Success Message */}
         {successMessage && (
@@ -205,53 +213,20 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Stats */}
+        {/* Stats - 간소화 */}
         {articles.length > 0 && !loading && !initialLoading && (
-          <div className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-[#3182F6]/10 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-[#3182F6]" />
-                </div>
-                <span className="text-sm text-gray-500 font-medium">총 기사</span>
-              </div>
-              <p className="text-3xl font-bold text-gray-900">{articles.length}</p>
-            </div>
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-emerald-600" />
-                </div>
-                <span className="text-sm text-gray-500 font-medium">고유 종목</span>
-              </div>
-              <p className="text-3xl font-bold text-gray-900">
-                {new Set(articles.map((a) => a.title)).size}
-              </p>
-            </div>
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-purple-600" />
-                </div>
-                <span className="text-sm text-gray-500 font-medium">최근 업데이트</span>
-              </div>
-              <p className="text-sm text-gray-700 font-semibold">
-                {articles[0]?.created_at
-                  ? new Date(articles[0].created_at).toLocaleDateString('ko-KR', {
-                      month: 'long',
-                      day: 'numeric',
-                    })
-                  : '-'}
-              </p>
-            </div>
+          <div className="mb-6 flex items-center gap-4 text-sm text-gray-600">
+            <span className="font-medium">총 {articles.length}개</span>
+            <span>•</span>
+            <span>최신순 정렬</span>
           </div>
         )}
 
-        {/* Articles Grid */}
+        {/* 최신 뉴스 목록 */}
         {articles.length > 0 && !loading && !initialLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {articles.map((article) => (
-              <ArticleCard key={article.id || article.link} article={article} />
+          <div className="space-y-4">
+            {articles.map((article, index) => (
+              <ArticleCard key={article.id || article.link || index} article={article} />
             ))}
           </div>
         ) : (
