@@ -11,10 +11,20 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        'toss-blue': '#3182F6',
+        'toss-blue-hover': '#2563EB',
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.3s ease-in-out',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0', transform: 'translateY(-10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
     },
   },
   plugins: [],
 };
 export default config;
-
