@@ -15,24 +15,32 @@ export default function Dashboard() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 초기 로딩: 데이터 가져오기 및 연결 상태 확인
+    // 초기 로딩: 공모주 뉴스 자동 크롤링 및 표시
     const initializeData = async () => {
       setInitialLoading(true);
       setError(null);
       setConnectionError(null);
 
       try {
-        // 1. 먼저 기존 데이터 가져오기
-        await fetchArticles();
-
-        // 2. 데이터가 없으면 자동으로 크롤링 시도
+        // 1. 먼저 기존 데이터 확인
         const response = await fetch('/api/articles');
         const data = await response.json();
         
-        if (!data.articles || data.articles.length === 0) {
-          console.log('기존 데이터가 없어 자동 크롤링을 시작합니다...');
-          // 자동 크롤링 트리거 (공모주 관련 뉴스)
-          await handleSearch('공모주');
+        if (data.articles && data.articles.length > 0) {
+          // 기존 데이터가 있으면 최신순으로 정렬하여 표시 (최대 10개)
+          const sortedArticles = [...data.articles]
+            .sort((a, b) => {
+              const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+              return dateB - dateA; // 최신순
+            })
+            .slice(0, 10); // 최대 10개만
+          setArticles(sortedArticles);
+          console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
+        } else {
+          // 데이터가 없으면 자동으로 공모주 뉴스 크롤링
+          console.log('기존 데이터가 없어 공모주 뉴스를 자동 크롤링합니다...');
+          await handleSearch('공모주', false); // 자동 크롤링이므로 성공 메시지 숨김
         }
       } catch (err) {
         console.error('초기화 오류:', err);
@@ -69,12 +77,14 @@ export default function Dashboard() {
       }
 
       if (data.articles) {
-        // 최신순으로 정렬 (created_at 기준)
-        const sortedArticles = [...data.articles].sort((a, b) => {
-          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-          return dateB - dateA; // 최신순 (내림차순)
-        });
+        // 최신순으로 정렬하고 최대 10개만 표시
+        const sortedArticles = [...data.articles]
+          .sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return dateB - dateA; // 최신순 (내림차순)
+          })
+          .slice(0, 10); // 최대 10개만
         setArticles(sortedArticles);
         console.log(`✅ ${sortedArticles.length}개의 기사를 불러왔습니다.`);
       } else {
@@ -96,11 +106,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleSearch = async (searchQuery: string) => {
+  const handleSearch = async (searchQuery: string, showSuccessMessage: boolean = true) => {
     setLoading(true);
     setError(null);
     setConnectionError(null);
-    setSuccessMessage(null);
+    if (showSuccessMessage) {
+      setSuccessMessage(null);
+    }
 
     try {
       const response = await fetch('/api/crawl', {
@@ -119,14 +131,14 @@ export default function Dashboard() {
         throw new Error(errorMsg);
       }
 
-      // 성공 메시지 표시
-      if (data.message) {
+      // 성공 메시지 표시 (showSuccessMessage가 true일 때만)
+      if (showSuccessMessage && data.message) {
         setSuccessMessage(`${data.message} (${data.savedCount}개 저장됨)`);
         setTimeout(() => setSuccessMessage(null), 5000);
       }
 
       // 저장된 기사가 있으면 목록 새로고침
-      if (data.savedCount > 0) {
+      if (data.savedCount > 0 || data.totalCrawled > 0) {
         await fetchArticles();
       } else if (data.totalCrawled === 0) {
         setError('크롤링된 뉴스가 없습니다. 검색어를 변경해보세요.');
@@ -151,7 +163,7 @@ export default function Dashboard() {
       {/* 최상단 검색 필드 */}
       <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <SearchBar onSearch={handleSearch} loading={loading || initialLoading} />
+          <SearchBar onSearch={(query) => handleSearch(query, true)} loading={loading || initialLoading} />
         </div>
       </div>
 
@@ -208,7 +220,7 @@ export default function Dashboard() {
               <Loader2 className="w-6 h-6 text-[#3182F6] animate-spin" />
             </div>
             <p className="text-gray-500 text-sm">
-              {initialLoading ? '데이터를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
+              {initialLoading ? '공모주 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
             </p>
           </div>
         )}
@@ -216,16 +228,16 @@ export default function Dashboard() {
         {/* Stats - 간소화 */}
         {articles.length > 0 && !loading && !initialLoading && (
           <div className="mb-6 flex items-center gap-4 text-sm text-gray-600">
-            <span className="font-medium">총 {articles.length}개</span>
+            <span className="font-medium">공모주 뉴스 {articles.length}개</span>
             <span>•</span>
             <span>최신순 정렬</span>
           </div>
         )}
 
-        {/* 최신 뉴스 목록 */}
+        {/* 최신 뉴스 목록 (최대 10개) */}
         {articles.length > 0 && !loading && !initialLoading ? (
           <div className="space-y-4">
-            {articles.map((article, index) => (
+            {articles.slice(0, 10).map((article, index) => (
               <ArticleCard key={article.id || article.link || index} article={article} />
             ))}
           </div>
@@ -236,10 +248,10 @@ export default function Dashboard() {
                 <Sparkles className="w-10 h-10 text-gray-400" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                공모주 뉴스를 검색해보세요
+                공모주 뉴스를 불러오는 중...
               </h3>
               <p className="text-sm text-gray-500">
-                검색어를 입력하면 최신 공모주 정보를 수집하고 요약해드립니다
+                잠시만 기다려주세요. 최신 공모주 뉴스를 수집하고 있습니다.
               </p>
             </div>
           )

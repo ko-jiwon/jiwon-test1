@@ -16,11 +16,12 @@ export async function GET() {
       );
     }
 
+    // 최신순으로 정렬하여 최대 10개만 조회
     const { data, error } = await supabase
       .from('ipo_news')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(10);
 
     if (error) {
       console.error('Supabase 쿼리 오류:', error);
@@ -52,7 +53,7 @@ export async function GET() {
       throw error;
     }
 
-    console.log(`✅ ${data?.length || 0}개의 기사를 조회했습니다.`);
+    console.log(`✅ ${data?.length || 0}개의 기사를 조회했습니다. (최신순, 최대 10개)`);
     return NextResponse.json({ articles: data || [] });
   } catch (error) {
     console.error('기사 조회 오류:', error);
