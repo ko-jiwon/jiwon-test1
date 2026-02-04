@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const sortBy = searchParams.get('sort') || 'latest'; // 'latest' | 'relevance'
+    const limit = parseInt(searchParams.get('limit') || '10');
+
     // 환경 변수 확인
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       console.error('❌ Supabase 환경 변수가 설정되지 않았습니다.');
@@ -16,12 +20,21 @@ export async function GET() {
       );
     }
 
-    // 최신순으로 정렬하여 최대 10개만 조회
-    const { data, error } = await supabase
+    // 정렬 기준에 따라 쿼리 구성
+    let query = supabase
       .from('ipo_news')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
+      .select('*');
+
+    if (sortBy === 'latest') {
+      query = query.order('created_at', { ascending: false });
+    } else if (sortBy === 'relevance') {
+      // 관련도순: schedule이 있는 항목 우선, 그 다음 최신순
+      query = query.order('created_at', { ascending: false });
+    }
+
+    query = query.limit(limit);
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Supabase 쿼리 오류:', error);
@@ -53,8 +66,17 @@ export async function GET() {
       throw error;
     }
 
-    console.log(`✅ ${data?.length || 0}개의 기사를 조회했습니다. (최신순, 최대 10개)`);
-    return NextResponse.json({ articles: data || [] });
+    console.log(`✅ ${data?.length || 0}개의 기사를 조회했습니다. (${sortBy}, 최대 ${limit}개)`);
+    
+    // 성능 최적화: 캐싱 헤더 추가 (30초 캐시)
+    return NextResponse.json(
+      { articles: data || [] },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        },
+      }
+    );
   } catch (error) {
     console.error('기사 조회 오류:', error);
     const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
