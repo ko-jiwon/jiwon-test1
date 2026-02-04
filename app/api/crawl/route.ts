@@ -71,10 +71,13 @@ export async function POST(request: NextRequest) {
         }
 
         // 2-3. DB에 upsert (link 기준으로 중복 체크)
+        // schedule이 유효한 값일 때만 포함
         const newsData: Omit<IPONews, 'id' | 'created_at'> = {
           title: summary.stock_name || article.title.substring(0, 200),
           summary: summary.summary || article.snippet || '요약 정보 없음',
-          schedule: summary.schedule && summary.schedule !== '정보 없음' ? summary.schedule : null,
+          ...(summary.schedule && summary.schedule !== '정보 없음' 
+            ? { schedule: summary.schedule } 
+            : {}),
           link: article.url,
         };
 
