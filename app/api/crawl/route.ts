@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { crawlGoogleNews, fetchArticleContent } from '@/lib/crawler';
+import { crawlEconomyNews, fetchArticleContent } from '@/lib/crawler';
 import { summarizeNews } from '@/lib/gemini';
 import { supabase } from '@/lib/supabase';
 import { IPONews } from '@/types';
 
 /**
- * 공모주 뉴스 크롤링 및 요약 API
+ * 경제 뉴스 크롤링 및 요약 API
  * POST /api/crawl
  * 
- * 구글 뉴스에서 '2월 공모주' 키워드로 최신 뉴스 10개를 크롤링하고,
- * Gemini 1.5 Flash로 요약한 후 Supabase에 저장합니다.
+ * 구글/네이버 경제 뉴스에서 키워드로 최신 뉴스 10개를 크롤링하고,
+ * Gemini 1.5 Flash로 핵심 키워드와 핵심 내용을 요약한 후 Supabase에 저장합니다.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -38,11 +38,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. 구글 뉴스에서 '2월 공모주' 키워드로 최신 뉴스 10개 크롤링
-    console.log('🔍 구글 뉴스 크롤링 시작...');
+    // 요청 본문에서 검색 키워드 가져오기
+    const body = await request.json().catch(() => ({}));
+    const searchQuery = body.searchQuery || '공모주';
+    
+    console.log(`🔍 경제 뉴스 크롤링 시작: "${searchQuery}"`);
+
+    // 1. 구글/네이버 경제 뉴스에서 최신 뉴스 10개 크롤링
     let newsArticles;
     try {
-      newsArticles = await crawlGoogleNews('2월 공모주');
+      newsArticles = await crawlEconomyNews(searchQuery);
     } catch (error) {
       console.error('❌ 크롤링 오류:', error);
       return NextResponse.json(
@@ -60,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           error: '크롤링된 뉴스가 없습니다.',
-          message: '검색어를 변경하거나 나중에 다시 시도해주세요.',
+          message: `"${searchQuery}"에 대한 최신 뉴스를 찾을 수 없습니다. 검색어를 변경해보세요.`,
           savedCount: 0,
           totalCrawled: 0
         },
@@ -83,12 +88,13 @@ export async function POST(request: NextRequest) {
         // 2-1. 기사 본문 가져오기
         const articleContent = await fetchArticleContent(article.url);
         
-        // 2-2. Gemini API로 요약 (종목명, 청약일정, 핵심 요약 추출)
+        // 2-2. Gemini API로 요약 (핵심 키워드 및 핵심 내용 추출)
         let summary;
         try {
           summary = await summarizeNews(
             article.title,
-            articleContent || article.snippet || article.title
+            articleContent || article.snippet || article.title,
+            searchQuery
           );
         } catch (geminiError) {
           console.error(`❌ Gemini API 오류 (${article.url}):`, geminiError);
@@ -97,18 +103,19 @@ export async function POST(request: NextRequest) {
             stock_name: article.title.substring(0, 50) || '정보 없음',
             schedule: '정보 없음',
             summary: article.snippet || article.title.substring(0, 100) || '요약 정보 없음',
+            keywords: searchQuery,
           };
           errors.push(`Gemini API 오류: ${article.title}`);
         }
 
         // 2-3. DB에 upsert (link 기준으로 중복 체크)
-        // schedule이 유효한 값일 때만 포함
         const newsData: Omit<IPONews, 'id' | 'created_at'> = {
           title: summary.stock_name || article.title.substring(0, 200),
           summary: summary.summary || article.snippet || '요약 정보 없음',
           ...(summary.schedule && summary.schedule !== '정보 없음' 
             ? { schedule: summary.schedule } 
             : {}),
+          ...(summary.keywords ? { keywords: summary.keywords } : {}),
           link: article.url,
         };
 
@@ -179,11 +186,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: savedCount > 0 
-        ? `데이터 수집 및 요약 완료 (${savedCount}개 저장됨)`
+        ? `"${searchQuery}" 관련 뉴스 ${savedCount}개 수집 및 요약 완료`
         : '크롤링은 완료되었지만 저장된 데이터가 없습니다.',
       savedCount,
       totalCrawled: newsArticles.length,
       processedCount,
+      searchQuery,
       errors: errors.length > 0 ? errors.slice(0, 5) : undefined, // 최대 5개만 반환
     });
   } catch (error) {

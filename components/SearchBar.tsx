@@ -14,7 +14,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loading) {
-      onSearch(query.trim() || '2월 공모주');
+      onSearch(query.trim() || '공모주');
     }
   };
 

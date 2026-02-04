@@ -1,13 +1,15 @@
 'use client';
 
 import { IPONews } from '@/types';
-import { Calendar, ArrowRight, Clock } from 'lucide-react';
+import { Calendar, ArrowRight, Clock, Tag } from 'lucide-react';
 
 interface ArticleCardProps {
   article: IPONews;
 }
 
 export default function ArticleCard({ article }: ArticleCardProps) {
+  const keywords = article.keywords?.split(',').map(k => k.trim()).filter(k => k) || [];
+
   return (
     <a
       href={article.link}
@@ -27,6 +29,21 @@ export default function ArticleCard({ article }: ArticleCardProps) {
           <p className="text-sm text-gray-600 leading-relaxed line-clamp-2 mb-3">
             {article.summary}
           </p>
+          
+          {/* 핵심 키워드 */}
+          {keywords.length > 0 && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <Tag className="w-3.5 h-3.5 text-gray-400" />
+              {keywords.slice(0, 5).map((keyword, index) => (
+                <span
+                  key={index}
+                  className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-md"
+                >
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          )}
           
           {/* 하단 정보 */}
           <div className="flex items-center gap-4 flex-wrap">

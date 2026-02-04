@@ -5,6 +5,7 @@ export interface IPONews {
   schedule?: string;
   link: string;
   created_at?: string;
+  keywords?: string;
 }
 
 export interface NewsArticle {
@@ -12,11 +13,12 @@ export interface NewsArticle {
   url: string;
   snippet: string;
   source: string;
+  publishedAt?: string;
 }
 
 export interface GeminiSummary {
   stock_name: string;
   schedule: string;
   summary: string;
+  keywords?: string;
 }
-

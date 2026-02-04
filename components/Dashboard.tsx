@@ -31,8 +31,8 @@ export default function Dashboard() {
         
         if (!data.articles || data.articles.length === 0) {
           console.log('기존 데이터가 없어 자동 크롤링을 시작합니다...');
-          // 자동 크롤링 트리거
-          await handleSearch('2월 공모주');
+          // 자동 크롤링 트리거 (공모주 관련 뉴스)
+          await handleSearch('공모주');
         }
       } catch (err) {
         console.error('초기화 오류:', err);
