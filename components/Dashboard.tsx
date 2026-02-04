@@ -190,9 +190,8 @@ export default function Dashboard() {
       // 저장된 기사가 있으면 목록 새로고침
       if (data.savedCount > 0 || data.totalCrawled > 0) {
         await fetchArticles();
-      } else if (data.totalCrawled === 0) {
-        setError('크롤링된 뉴스가 없습니다. 검색어를 변경해보세요.');
       }
+      // 크롤링된 뉴스가 없어도 에러 메시지 표시하지 않음
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
       console.error('크롤링 오류:', err);
