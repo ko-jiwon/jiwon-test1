@@ -2,13 +2,170 @@ import * as cheerio from 'cheerio';
 import { NewsArticle } from '@/types';
 
 /**
- * 네이버 경제 뉴스에서 키워드 검색 크롤링
+ * 네이버 금융 증시 뉴스 페이지 크롤링
  */
-export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsArticle[]> {
+export async function crawlNaverFinanceNews(): Promise<NewsArticle[]> {
+  try {
+    // 네이버 금융 증시 뉴스 페이지
+    const financeUrl = 'https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258';
+    
+    console.log(`[네이버 금융] 크롤링 시작: ${financeUrl}`);
+    
+    // 타임아웃 설정 (15초)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    let response;
+    try {
+      response = await fetch(financeUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer': 'https://finance.naver.com/',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('[네이버 금융] 요청 타임아웃 (15초 초과)');
+        throw new Error('네이버 금융 뉴스 크롤링 타임아웃');
+      }
+      throw fetchError;
+    }
+
+    if (!response.ok) {
+      console.error(`[네이버 금융] HTTP 오류: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const html = await response.text();
+    
+    if (!html || html.length < 100) {
+      console.error('[네이버 금융] HTML 응답이 비어있거나 너무 짧습니다.');
+      return [];
+    }
+    
+    const $ = cheerio.load(html);
+    const articles: NewsArticle[] = [];
+
+    // 네이버 금융 뉴스 리스트 파싱
+    console.log(`[네이버 금융] HTML 파싱 시작 (길이: ${html.length})`);
+    
+    // 네이버 금융 뉴스 구조: dl > dt > a (제목), dl > dd (요약)
+    $('dl').each((index, element) => {
+      if (articles.length >= 15) return false;
+
+      const $dl = $(element);
+      
+      // 제목과 링크 추출 (dt > a)
+      const $titleEl = $dl.find('dt a').first();
+      const title = $titleEl.text().trim() || $titleEl.attr('title') || '';
+      let link = $titleEl.attr('href') || '';
+      
+      // 요약 추출 (dd)
+      const snippet = $dl.find('dd').first().text().trim();
+      
+      // 출처 추출
+      const source = $dl.find('.press, .press_name, .articleSummary').text().trim() || 
+                     $dl.find('dd .press').text().trim();
+      
+      // 날짜 추출
+      const date = $dl.find('.date, .wdate').text().trim() || 
+                   $dl.find('dd .date').text().trim();
+
+      if (title && link && title.length > 5) {
+        // 링크 정규화
+        if (link.startsWith('http')) {
+          // 이미 절대 경로
+        } else if (link.startsWith('/')) {
+          link = `https://finance.naver.com${link}`;
+        } else if (link.startsWith('./')) {
+          link = `https://finance.naver.com${link.substring(1)}`;
+        } else {
+          link = `https://finance.naver.com/${link}`;
+        }
+        
+        // 실제 뉴스 기사 URL인지 확인
+        if (link.includes('news.naver.com') || link.includes('/news/') || link.includes('article')) {
+          const urlKey = link.split('?')[0];
+          if (!articles.some(a => {
+            const aUrlKey = a.url.split('?')[0];
+            return aUrlKey === urlKey || a.title === title;
+          })) {
+            articles.push({
+              title,
+              url: link,
+              snippet: snippet || '',
+              source: source || '네이버 금융',
+              publishedAt: date,
+            });
+          }
+        }
+      }
+    });
+    
+    console.log(`[네이버 금융] dl 구조로 ${articles.length}개 발견`);
+    
+    // 추가 셀렉터 시도 (.articleSubject 등)
+    if (articles.length < 10) {
+      $('.articleSubject, .newsList li').each((index, element) => {
+        if (articles.length >= 15) return false;
+
+        const $el = $(element);
+        const $titleEl = $el.find('a').first();
+        const title = $titleEl.text().trim() || $titleEl.attr('title') || '';
+        let link = $titleEl.attr('href') || '';
+        const snippet = $el.find('.summary, .articleSummary, dd').text().trim();
+        const source = $el.find('.press, .press_name').text().trim();
+        const date = $el.find('.date, .wdate').text().trim();
+
+        if (title && link && title.length > 5) {
+          if (link.startsWith('http')) {
+            // 이미 절대 경로
+          } else if (link.startsWith('/')) {
+            link = `https://finance.naver.com${link}`;
+          } else {
+            link = `https://finance.naver.com/${link}`;
+          }
+          
+          if (link.includes('news.naver.com') || link.includes('/news/') || link.includes('article')) {
+            const urlKey = link.split('?')[0];
+            if (!articles.some(a => a.url.split('?')[0] === urlKey || a.title === title)) {
+              articles.push({
+                title,
+                url: link,
+                snippet: snippet || '',
+                source: source || '네이버 금융',
+                publishedAt: date,
+              });
+            }
+          }
+        }
+      });
+    }
+
+    console.log(`✅ 네이버 금융에서 ${articles.length}개의 뉴스를 수집했습니다.`);
+    return articles.slice(0, 15);
+  } catch (error) {
+    console.error('[네이버 금융] 크롤링 오류:', error);
+    if (error instanceof Error) {
+      console.error('[네이버 금융] 오류 상세:', error.message, error.stack);
+    }
+    return [];
+  }
+}
+
+/**
+ * 네이버 뉴스 검색에서 주식 뉴스 크롤링
+ */
+export async function crawlNaverStockNews(searchQuery: string = '주식'): Promise<NewsArticle[]> {
   try {
     // 네이버 뉴스 검색 URL (최신순 정렬)
     // sort=1: 최신순, sort=0: 관련도순
-    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' IPO')}&sort=1`;
+    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 증시')}&sort=1`;
     
     console.log(`[네이버] 크롤링 시작: ${searchUrl}`);
     
@@ -176,10 +333,10 @@ export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsAr
 /**
  * Google News에서 키워드 검색 크롤링 (최신순)
  */
-export async function crawlGoogleNews(searchQuery: string = '공모주'): Promise<NewsArticle[]> {
+export async function crawlGoogleNews(searchQuery: string = '주식'): Promise<NewsArticle[]> {
   try {
     // Google News 검색 URL (최신순 정렬, 한국어)
-    const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery + ' 공모주')}&hl=ko&gl=KR&ceid=KR:ko&when=7d`;
+    const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery + ' 증시')}&hl=ko&gl=KR&ceid=KR:ko&when=7d`;
     
     console.log(`[Google News] 크롤링 시작: ${searchUrl}`);
     
@@ -286,7 +443,7 @@ export async function crawlGoogleNews(searchQuery: string = '공모주'): Promis
  */
 export async function crawlDaumNews(searchQuery: string): Promise<NewsArticle[]> {
   try {
-    const searchUrl = `https://search.daum.net/search?w=news&q=${encodeURIComponent(searchQuery + ' 공모주')}&sort=recency`;
+    const searchUrl = `https://search.daum.net/search?w=news&q=${encodeURIComponent(searchQuery + ' 증시')}&sort=recency`;
     
     const response = await fetch(searchUrl, {
       headers: {
@@ -341,50 +498,27 @@ async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function crawlEconomyNews(searchQuery: string = '공모주'): Promise<NewsArticle[]> {
+export async function crawlStockNews(searchQuery: string = '주식'): Promise<NewsArticle[]> {
   try {
     const allArticles: NewsArticle[] = [];
     const existingUrls = new Set<string>();
     const existingTitles = new Set<string>();
 
-    // 검색어에 "공모주"가 없으면 추가
-    const enhancedQuery = searchQuery.includes('공모주') ? searchQuery : `${searchQuery} 공모주`;
+    // 주식 뉴스는 기본적으로 증시 관련 키워드 추가
+    const enhancedQuery = searchQuery.includes('주식') || searchQuery.includes('증시') 
+      ? searchQuery 
+      : `${searchQuery} 주식`;
 
     console.log(`[통합 크롤링] 시작: "${enhancedQuery}"`);
 
-    // 1. 네이버 경제 뉴스 크롤링
+    // 1. 네이버 금융 증시 뉴스 페이지 크롤링 (우선)
     try {
-      console.log(`🔍 [1/3] 네이버 경제 뉴스 크롤링: ${enhancedQuery}`);
-      const naverArticles = await crawlNaverEconomyNews(enhancedQuery);
-      console.log(`[네이버] ${naverArticles.length}개 수집 완료`);
+      console.log(`🔍 [1/3] 네이버 금융 증시 뉴스 크롤링`);
+      const financeArticles = await crawlNaverFinanceNews();
+      console.log(`[네이버 금융] ${financeArticles.length}개 수집 완료`);
       
-      for (const article of naverArticles) {
-        if (allArticles.length >= 10) break;
-        const urlKey = article.url.split('?')[0]; // 쿼리 파라미터 제거
-        if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
-          allArticles.push(article);
-          existingUrls.add(urlKey);
-          existingTitles.add(article.title);
-        }
-      }
-      
-      // Rate Limiting: 다음 요청 전 대기
-      await delay(1000);
-    } catch (error) {
-      console.error('[네이버] 크롤링 실패:', error);
-      if (error instanceof Error) {
-        console.error('[네이버] 오류 상세:', error.message);
-      }
-    }
-
-    // 2. Google News 크롤링
-    try {
-      console.log(`🔍 [2/3] Google News 크롤링: ${enhancedQuery}`);
-      const googleArticles = await crawlGoogleNews(enhancedQuery);
-      console.log(`[Google News] ${googleArticles.length}개 수집 완료`);
-      
-      for (const article of googleArticles) {
-        if (allArticles.length >= 10) break;
+      for (const article of financeArticles) {
+        if (allArticles.length >= 15) break;
         const urlKey = article.url.split('?')[0];
         if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
           allArticles.push(article);
@@ -392,25 +526,48 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
           existingTitles.add(article.title);
         }
       }
-      
-      // Rate Limiting: 다음 요청 전 대기
-      await delay(1000);
+      await delay(1000); // Rate Limiting
     } catch (error) {
-      console.error('[Google News] 크롤링 실패:', error);
+      console.error('[네이버 금융] 크롤링 실패:', error);
       if (error instanceof Error) {
-        console.error('[Google News] 오류 상세:', error.message);
+        console.error('[네이버 금융] 오류 상세:', error.message);
       }
     }
 
-    // 3. 다음 뉴스 크롤링 (네이버와 구글이 실패한 경우)
-    if (allArticles.length < 5) {
+    // 2. 네이버 뉴스 검색 크롤링 (주식+증시)
+    if (allArticles.length < 10) {
       try {
-        console.log(`🔍 [3/3] 다음 뉴스 크롤링: ${enhancedQuery}`);
-        const daumArticles = await crawlDaumNews(enhancedQuery);
-        console.log(`[다음] ${daumArticles.length}개 수집 완료`);
+        console.log(`🔍 [2/3] 네이버 뉴스 검색 크롤링: ${enhancedQuery}`);
+        const naverArticles = await crawlNaverStockNews(enhancedQuery);
+        console.log(`[네이버 검색] ${naverArticles.length}개 수집 완료`);
         
-        for (const article of daumArticles) {
-          if (allArticles.length >= 10) break;
+        for (const article of naverArticles) {
+          if (allArticles.length >= 15) break;
+          const urlKey = article.url.split('?')[0];
+          if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
+            allArticles.push(article);
+            existingUrls.add(urlKey);
+            existingTitles.add(article.title);
+          }
+        }
+        await delay(1000); // Rate Limiting
+      } catch (error) {
+        console.error('[네이버 검색] 크롤링 실패:', error);
+        if (error instanceof Error) {
+          console.error('[네이버 검색] 오류 상세:', error.message);
+        }
+      }
+    }
+
+    // 3. Google News 크롤링 (추가 뉴스가 필요한 경우)
+    if (allArticles.length < 10) {
+      try {
+        console.log(`🔍 [3/3] Google News 크롤링: ${enhancedQuery}`);
+        const googleArticles = await crawlGoogleNews(enhancedQuery);
+        console.log(`[Google News] ${googleArticles.length}개 수집 완료`);
+        
+        for (const article of googleArticles) {
+          if (allArticles.length >= 15) break;
           const urlKey = article.url.split('?')[0];
           if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
             allArticles.push(article);
@@ -419,9 +576,9 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
           }
         }
       } catch (error) {
-        console.error('[다음] 크롤링 실패:', error);
+        console.error('[Google News] 크롤링 실패:', error);
         if (error instanceof Error) {
-          console.error('[다음] 오류 상세:', error.message);
+          console.error('[Google News] 오류 상세:', error.message);
         }
       }
     }
@@ -432,7 +589,7 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
       console.warn('⚠️ [통합 크롤링] 모든 소스에서 뉴스를 찾을 수 없습니다.');
     }
     
-    return allArticles.slice(0, 10);
+    return allArticles.slice(0, 15);
   } catch (error) {
     console.error('❌ [통합 크롤링] 오류:', error);
     if (error instanceof Error) {
@@ -440,6 +597,11 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
     }
     return [];
   }
+}
+
+// 하위 호환성을 위해 crawlEconomyNews도 유지 (crawlStockNews로 리다이렉트)
+export async function crawlEconomyNews(searchQuery: string = '주식'): Promise<NewsArticle[]> {
+  return crawlStockNews(searchQuery);
 }
 
 /**

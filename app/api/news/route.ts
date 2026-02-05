@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { crawlEconomyNews } from '@/lib/crawler';
+import { crawlStockNews } from '@/lib/crawler';
 
 // 간단한 메모리 캐시 (30분 TTL)
 interface CacheEntry {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get('refresh') === 'true';
-    const searchQuery = searchParams.get('q') || '공모주';
+    const searchQuery = searchParams.get('q') || '주식';
     
     console.log(`[뉴스 API] 요청 받음: q=${searchQuery}, refresh=${forceRefresh}`);
     
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     console.log(`[뉴스 API] 크롤링 시작: ${searchQuery}`);
     
     // 크롤링 타임아웃 설정 (20초)
-    const crawlPromise = crawlEconomyNews(searchQuery);
+    const crawlPromise = crawlStockNews(searchQuery);
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
     });
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { 
-        articles: articles.slice(0, 10), // 최대 10개
+        articles: articles.slice(0, 15), // 최대 15개
         cached: false,
         timestamp: Date.now(),
       },
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
     }
     
     // 캐시된 데이터가 있으면 반환 (에러 발생 시)
-    const searchQuery = new URL(request.url).searchParams.get('q') || '공모주';
+    const searchQuery = new URL(request.url).searchParams.get('q') || '주식';
     const cacheKey = `news_${searchQuery}`;
     const cached = cache.get(cacheKey);
     if (cached) {

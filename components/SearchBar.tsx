@@ -53,7 +53,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loading) {
-      onSearch(query.trim() || '공모주');
+      onSearch(query.trim() || '주식');
       setShowSuggestions(false);
     }
   };
@@ -101,7 +101,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
             }
           }}
           onKeyDown={handleKeyDown}
-          placeholder="공모주 뉴스 검색 (예: 토스, 2월 공모주, IPO)"
+          placeholder="주식 뉴스 검색 (예: 삼성전자, 2월 증시, 반도체)"
           className="w-full pl-14 pr-36 py-4 text-base bg-white border-2 border-gray-100 rounded-2xl focus:border-[#3182F6] focus:ring-2 focus:ring-[#3182F6]/10 outline-none transition-all placeholder:text-gray-400 disabled:bg-gray-50 disabled:cursor-not-allowed"
           disabled={loading}
         />

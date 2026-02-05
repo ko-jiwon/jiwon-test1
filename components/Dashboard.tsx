@@ -43,7 +43,7 @@ export default function Dashboard() {
       console.log('[Dashboard] 빠른 뉴스 크롤링 시작');
       
       // 타임아웃 10초로 설정
-      const response = await fetchWithTimeout('/api/news?q=공모주', {}, 10000);
+      const response = await fetchWithTimeout('/api/news?q=주식', {}, 10000);
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -103,7 +103,7 @@ export default function Dashboard() {
       fetch('/api/crawl', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ searchQuery: '공모주' }),
+        body: JSON.stringify({ searchQuery: '주식' }),
       }).then(() => {
         console.log('[Dashboard] 백그라운드 DB 저장 완료');
       }).catch((err) => {
@@ -117,7 +117,7 @@ export default function Dashboard() {
   // 백그라운드에서 뉴스 새로고침
   const refreshNewsInBackground = async () => {
     try {
-      const response = await fetchWithTimeout('/api/news?q=공모주&refresh=true', {}, 10000);
+      const response = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
       if (response.ok) {
         const data = await response.json();
         if (data.articles && data.articles.length > 0) {
@@ -139,7 +139,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    // 초기 로딩: 공모주 뉴스 자동 크롤링 및 표시
+    // 초기 로딩: 주식 뉴스 자동 크롤링 및 표시
     const initializeData = async () => {
       setInitialLoading(true);
       setError(null);
@@ -161,7 +161,7 @@ export default function Dashboard() {
         // 1. 먼저 빠른 뉴스 API로 크롤링 (캐시 활용, 타임아웃 10초)
         console.log('[Dashboard] 초기 뉴스 로딩 시작');
         try {
-          const newsResponse = await fetchWithTimeout('/api/news?q=공모주', {}, 10000);
+          const newsResponse = await fetchWithTimeout('/api/news?q=주식', {}, 10000);
           
           if (newsResponse.ok) {
             const newsData = await newsResponse.json();
@@ -400,7 +400,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="mb-4">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
-            <p className="text-sm text-gray-500">공모주 정보를 한눈에 확인하세요</p>
+            <p className="text-sm text-gray-500">주식 정보를 한눈에 확인하세요</p>
           </div>
           <SearchBar onSearch={(query) => handleSearch(query, true)} loading={loading || initialLoading} />
         </div>
@@ -442,7 +442,7 @@ export default function Dashboard() {
                 <Loader2 className="w-6 h-6 text-[#3182F6] animate-spin" />
               </div>
               <p className="text-gray-500 text-sm">
-                {initialLoading ? '공모주 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
+                      {initialLoading ? '주식 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
               </p>
             </div>
             {/* Skeleton UI */}
@@ -456,11 +456,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 최신 공모주 경제 뉴스 리스트 */}
+        {/* 최신 주식 뉴스 리스트 */}
         {!loading && !initialLoading && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">공모주 뉴스</h2>
+              <h2 className="text-xl font-bold text-gray-900">주식 뉴스</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
@@ -468,7 +468,7 @@ export default function Dashboard() {
                     setError(null);
                     try {
                       // 빠른 뉴스 API 사용 (타임아웃 10초)
-                      const response = await fetchWithTimeout('/api/news?q=공모주&refresh=true', {}, 10000);
+                      const response = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
                       
                       if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -531,7 +531,7 @@ export default function Dashboard() {
                   뉴스가 없습니다
                 </h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  공모주 관련 뉴스를 찾을 수 없습니다.
+                  주식 관련 뉴스를 찾을 수 없습니다.
                 </p>
                 <button
                   onClick={async () => {
