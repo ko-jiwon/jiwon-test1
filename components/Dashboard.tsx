@@ -69,12 +69,16 @@ export default function Dashboard() {
           
           console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
         } else {
-          // 데이터가 없으면 자동으로 공모주 뉴스 크롤링 (백그라운드에서)
+          // 데이터가 없으면 자동으로 공모주 뉴스 크롤링
           console.log('기존 데이터가 없어 공모주 뉴스를 자동 크롤링합니다...');
-          // 비동기로 크롤링 (로딩 블로킹 방지)
-          handleSearch('공모주', false).catch(err => {
+          // 자동 크롤링 실행
+          try {
+            await handleSearch('공모주', false);
+            // 크롤링 후 데이터 다시 불러오기
+            await fetchArticles();
+          } catch (err) {
             console.error('자동 크롤링 오류:', err);
-          });
+          }
         }
       } catch (err) {
         console.error('초기화 오류:', err);
