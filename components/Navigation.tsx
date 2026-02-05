@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Calendar, Newspaper, TrendingUp } from 'lucide-react';
+import { Home, Calendar, Newspaper } from 'lucide-react';
+import { Playfair_Display } from 'next/font/google';
+
+const playfair = Playfair_Display({ 
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  display: 'swap',
+});
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -18,11 +25,8 @@ export default function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#3182F6] flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-lg font-bold text-gray-900">공모주 정보</span>
+          <Link href="/" className={`${playfair.className} text-2xl font-bold text-gray-900 hover:text-[#3182F6] transition-colors`}>
+            Stock News
           </Link>
 
           {/* Navigation Items */}
