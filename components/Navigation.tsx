@@ -28,8 +28,11 @@ export default function Navigation() {
     e.preventDefault();
     const trimmedQuery = searchQuery.trim();
     if (trimmedQuery) {
-      // URL 쿼리 파라미터 업데이트 (페이지 새로고침 없이)
-      router.push(`/?q=${encodeURIComponent(trimmedQuery)}`);
+      // URL 쿼리 파라미터 업데이트하여 검색 실행
+      const newUrl = `/?q=${encodeURIComponent(trimmedQuery)}`;
+      router.push(newUrl);
+      // 페이지 새로고침하여 검색 실행
+      window.location.href = newUrl;
     }
   };
 

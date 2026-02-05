@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, TrendingUp, Calendar, FileText, Sparkles, AlertCircle, Clock, ArrowRight } from 'lucide-react';
 import { IPONews } from '@/types';
@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('주식');
+  const lastSearchRef = useRef<string>('');
 
   // 타임아웃이 있는 fetch 헬퍼 함수 (캐시 무시)
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout: number = 10000): Promise<Response> => {
@@ -213,19 +214,23 @@ export default function Dashboard() {
     const queryParam = searchParams.get('q');
     const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
     
-    // 검색어가 변경되었을 때만 검색 실행
-    if (searchTerm !== searchQuery) {
+    // 이전 검색어와 다를 때만 검색 실행 (무한 루프 방지)
+    if (searchTerm !== lastSearchRef.current) {
+      console.log(`[Dashboard] 검색어 변경 감지: "${lastSearchRef.current}" -> "${searchTerm}"`);
+      lastSearchRef.current = searchTerm;
       searchNews(searchTerm);
     }
-  }, [searchParams, searchQuery]);
+  }, [searchParams]);
   
-  // 초기 로딩 (마운트 시 한 번만, 검색어가 없을 때)
+  // 초기 로딩 (마운트 시 한 번만)
   useEffect(() => {
     const queryParam = searchParams.get('q');
-    if (!queryParam && articles.length === 0) {
-      // 초기 로딩: 기본 뉴스 로드
-      searchNews('주식');
-    }
+    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
+    
+    // 초기 로딩: 검색어로 뉴스 로드
+    console.log(`[Dashboard] 초기 로딩: "${searchTerm}"`);
+    lastSearchRef.current = searchTerm;
+    searchNews(searchTerm);
   }, []);
 
   const fetchArticles = async () => {
