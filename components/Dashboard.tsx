@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Loader2, TrendingUp, Calendar, FileText, Sparkles, AlertCircle, Clock, ArrowRight } from 'lucide-react';
 import { IPONews } from '@/types';
 import ArticleCard from './ArticleCard';
@@ -8,6 +9,7 @@ import SearchBar from './SearchBar';
 import Link from 'next/link';
 
 export default function Dashboard() {
+  const searchParams = useSearchParams();
   const [articles, setArticles] = useState<IPONews[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -15,6 +17,7 @@ export default function Dashboard() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('주식');
 
   // 타임아웃이 있는 fetch 헬퍼 함수 (캐시 무시)
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout: number = 10000): Promise<Response> => {
@@ -150,6 +153,11 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    // URL 쿼리 파라미터에서 검색어 가져오기
+    const queryParam = searchParams.get('q');
+    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
+    setSearchQuery(searchTerm);
+    
     // 초기 로딩: 주식 뉴스 자동 크롤링 및 표시
     const initializeData = async () => {
       setInitialLoading(true);
@@ -170,10 +178,10 @@ export default function Dashboard() {
 
       try {
         // 1. 먼저 빠른 뉴스 API로 크롤링 (초기 로딩 시 항상 최신 데이터, 타임아웃 10초)
-        console.log('[Dashboard] 초기 뉴스 로딩 시작');
+        console.log(`[Dashboard] 초기 뉴스 로딩 시작: "${searchTerm}"`);
         try {
-          // 초기 로딩 시 항상 최신 데이터를 가져오기 위해 refresh=true 추가
-          const newsResponse = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
+          // 검색어로 뉴스 크롤링 (초기 로딩 시 항상 최신 데이터를 가져오기 위해 refresh=true 추가)
+          const newsResponse = await fetchWithTimeout(`/api/news?q=${encodeURIComponent(searchTerm)}&refresh=true`, {}, 10000);
           
           if (newsResponse.ok) {
             const newsData = await newsResponse.json();
