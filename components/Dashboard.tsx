@@ -49,48 +49,16 @@ export default function Dashboard() {
             .slice(0, 10); // 최대 10개만
           setArticles(sortedArticles);
           
-          // 일정이 있는 기사만 필터링하여 이번달 일정 추출
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const currentMonth = now.getMonth() + 1; // 1-12
-          const currentMonthStr = `${currentYear}년 ${currentMonth}월`;
-          
-          const schedules = sortedArticles
-            .filter(article => {
-              if (!article.schedule || article.schedule === '정보 없음') return false;
-              // 이번달 일정만 필터링 (2026년 2월 포함)
-              const scheduleText = article.schedule;
-              return scheduleText.includes(currentMonthStr) || 
-                     scheduleText.includes('2026년 2월') ||
-                     scheduleText.includes(`${currentYear}년 ${currentMonth}월`);
-            })
-            .sort((a, b) => {
-              // 긴급도가 높은 항목 우선 (청약중, 오늘 상장 등)
-              const aUrgent = a.schedule?.includes('청약중') || a.schedule?.includes('오늘') ? 1 : 0;
-              const bUrgent = b.schedule?.includes('청약중') || b.schedule?.includes('오늘') ? 1 : 0;
-              if (aUrgent !== bUrgent) return bUrgent - aUrgent;
-              
-              // 그 다음 최신순
-              const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-              const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-              return dateB - dateA;
-            })
-            .slice(0, 10); // 이번달 일정은 더 많이 표시
-          setUpcomingSchedules(schedules);
+          // 일정 섹션 제거 - 더 이상 일정 필터링하지 않음
+          setUpcomingSchedules([]);
           
           console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
         } else {
-          // 데이터가 없으면 자동으로 공모주 뉴스 및 일정 크롤링
-          console.log('기존 데이터가 없어 공모주 뉴스와 일정을 자동 크롤링합니다...');
-          // 병렬로 뉴스 크롤링과 일정 크롤링 실행
+          // 데이터가 없으면 자동으로 공모주 경제 뉴스 크롤링
+          console.log('기존 데이터가 없어 공모주 경제 뉴스를 자동 크롤링합니다...');
           try {
-            await Promise.all([
-              handleSearch('공모주', false),
-              // 일정 크롤링
-              fetch('/api/crawl-schedules', { method: 'POST' }).catch(err => {
-                console.error('일정 크롤링 오류:', err);
-              }),
-            ]);
+            // 공모주 관련 경제 뉴스 크롤링
+            await handleSearch('공모주', false);
             // 크롤링 후 데이터 다시 불러오기
             await fetchArticles();
           } catch (err) {
@@ -281,34 +249,20 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 1.1 이번달 공모주 일정 */}
+        {/* 최신 공모주 경제 뉴스 리스트 */}
         {!loading && !initialLoading && (
-          <div className="mb-8">
+          <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                {(() => {
-                  const now = new Date();
-                  const currentYear = now.getFullYear();
-                  const currentMonth = now.getMonth() + 1;
-                  return `${currentYear}년 ${currentMonth}월 공모주 일정`;
-                })()}
-              </h2>
+              <h2 className="text-xl font-bold text-gray-900">공모주 관련 경제 뉴스</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
                     setLoading(true);
                     try {
-                      const response = await fetch('/api/crawl-schedules', { method: 'POST' });
-                      const data = await response.json();
-                      if (data.success) {
-                        setSuccessMessage(data.message || '일정 크롤링이 완료되었습니다.');
-                        setTimeout(() => setSuccessMessage(null), 5000);
-                        await fetchArticles();
-                      } else {
-                        setError(data.error || '일정 크롤링 중 오류가 발생했습니다.');
-                      }
+                      await handleSearch('공모주', true);
+                      await fetchArticles();
                     } catch (err) {
-                      setError('일정 크롤링 중 오류가 발생했습니다.');
+                      setError('뉴스 크롤링 중 오류가 발생했습니다.');
                     } finally {
                       setLoading(false);
                     }
@@ -316,116 +270,17 @@ export default function Dashboard() {
                   disabled={loading}
                   className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Calendar className="w-4 h-4" />
-                  일정 새로고침
+                  <Sparkles className="w-4 h-4" />
+                  뉴스 새로고침
                 </button>
                 <Link 
-                  href="/calendar" 
+                  href="/news" 
                   className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1"
                 >
-                  전체 일정 보기
+                  전체 뉴스 보기
                   <ArrowRight className="w-4 h-4" />
                 </Link>
               </div>
-            </div>
-            
-            {upcomingSchedules.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {upcomingSchedules.map((schedule, index) => {
-                  // 긴급도 계산
-                  const scheduleText = schedule.schedule || '';
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  
-                  // 오늘 상장 체크
-                  const isTodayListing = scheduleText.includes('상장') && 
-                    (scheduleText.includes('오늘') || scheduleText.includes(today.toLocaleDateString('ko-KR')));
-                  
-                  // 청약중 체크
-                  const isSubscriptionActive = scheduleText.includes('청약중') || scheduleText.includes('청약');
-                  
-                  // 긴급도 결정
-                  const isUrgent = isTodayListing || isSubscriptionActive;
-                  
-                  // 날짜 파싱 시도
-                  const dateMatch = scheduleText.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
-                  let isToday = false;
-                  if (dateMatch) {
-                    const [, year, month, day] = dateMatch;
-                    const scheduleDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                    scheduleDate.setHours(0, 0, 0, 0);
-                    isToday = scheduleDate.getTime() === today.getTime();
-                  }
-                  
-                  const urgencyLevel = isTodayListing || (isToday && scheduleText.includes('상장')) ? 'high' :
-                                     isSubscriptionActive ? 'high' : 'medium';
-                  
-                  const borderColor = urgencyLevel === 'high' 
-                    ? 'border-red-300 border-2' 
-                    : 'border-gray-100';
-                  const bgColor = urgencyLevel === 'high' 
-                    ? 'bg-red-50' 
-                    : 'bg-emerald-50';
-                  const iconColor = urgencyLevel === 'high' 
-                    ? 'text-red-600' 
-                    : 'text-emerald-600';
-                  const scheduleColor = urgencyLevel === 'high' 
-                    ? 'text-red-700 font-bold' 
-                    : 'text-emerald-700 font-medium';
-                  
-                  return (
-                    <div
-                      key={schedule.id || schedule.link || index}
-                      className={`bg-white rounded-xl p-4 border ${borderColor} hover:shadow-md transition-shadow ${urgencyLevel === 'high' ? 'ring-2 ring-red-200' : ''}`}
-                    >
-                      {urgencyLevel === 'high' && (
-                        <div className="mb-2">
-                          <span className="inline-flex items-center px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-md">
-                            🔥 긴급
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
-                          <Calendar className={`w-5 h-5 ${iconColor}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-bold text-gray-900 mb-1 line-clamp-1">
-                            {schedule.title}
-                          </h3>
-                          <p className={`text-xs ${scheduleColor} mb-2`}>
-                            {schedule.schedule}
-                          </p>
-                          <p className="text-xs text-gray-500 line-clamp-2">
-                            {schedule.summary}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl p-8 border border-gray-100 text-center">
-                <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">예정된 일정이 없습니다</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 1.2 최신 공모주 뉴스 리스트 */}
-        {!loading && !initialLoading && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">최신 공모주 뉴스</h2>
-              <Link 
-                href="/news" 
-                className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1"
-              >
-                전체 뉴스 보기
-                <ArrowRight className="w-4 h-4" />
-              </Link>
             </div>
 
             {articles.length > 0 ? (
