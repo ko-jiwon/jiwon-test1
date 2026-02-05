@@ -49,8 +49,8 @@ export default function Dashboard() {
     try {
       console.log('[Dashboard] 빠른 뉴스 크롤링 시작');
       
-      // 타임아웃 10초로 설정
-      const response = await fetchWithTimeout('/api/news?q=주식', {}, 10000);
+      // 타임아웃 10초로 설정, 항상 최신 데이터 가져오기
+      const response = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -169,10 +169,11 @@ export default function Dashboard() {
       }, 15000);
 
       try {
-        // 1. 먼저 빠른 뉴스 API로 크롤링 (캐시 활용, 타임아웃 10초)
+        // 1. 먼저 빠른 뉴스 API로 크롤링 (초기 로딩 시 항상 최신 데이터, 타임아웃 10초)
         console.log('[Dashboard] 초기 뉴스 로딩 시작');
         try {
-          const newsResponse = await fetchWithTimeout('/api/news?q=주식', {}, 10000);
+          // 초기 로딩 시 항상 최신 데이터를 가져오기 위해 refresh=true 추가
+          const newsResponse = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
           
           if (newsResponse.ok) {
             const newsData = await newsResponse.json();

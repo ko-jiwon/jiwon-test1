@@ -197,7 +197,7 @@ export async function GET(request: NextRequest) {
     
     const cacheKey = 'naver_finance_news';
     
-    // 캐시 확인
+    // 캐시 확인 (forceRefresh가 true이면 캐시 무시)
     if (!forceRefresh) {
       const cached = cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -206,6 +206,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           success: true,
           data: cached.data,
+          articles: cached.data, // 기존 코드 호환성
           count: cached.data.length,
           cached: true,
           timestamp: cached.timestamp,
@@ -217,6 +218,10 @@ export async function GET(request: NextRequest) {
           },
         });
       }
+    } else {
+      // forceRefresh가 true이면 캐시 삭제
+      cache.delete(cacheKey);
+      console.log('[뉴스 API] 캐시 삭제 (forceRefresh=true)');
     }
 
     console.log(`[뉴스 API] 크롤링 시작`);
