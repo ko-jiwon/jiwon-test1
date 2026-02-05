@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
-import { crawlNaverStockNews } from '@/lib/crawler';
+import { crawlNaverEconomyNews } from '@/lib/crawler';
 
 // Next.js 캐싱 비활성화
 export const dynamic = 'force-dynamic';
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get('refresh') === 'true';
-    const searchQuery = searchParams.get('q') || '주식';
+    const searchQuery = searchParams.get('q') || '경제';
     
     console.log(`[뉴스 API] 요청 받음: q=${searchQuery}, refresh=${forceRefresh}`);
     
@@ -229,54 +229,42 @@ export async function GET(request: NextRequest) {
 
     console.log(`[뉴스 API] 크롤링 시작: "${searchQuery}"`);
     
-    // 검색어가 '주식'이면 네이버 금융 증시 뉴스, 아니면 네이버 뉴스 검색
+    // 모든 검색어에 대해 네이버 경제 뉴스 검색
     let newsItems: any[] = [];
     
-    if (searchQuery === '주식' || searchQuery === '증시') {
-      // 기본 뉴스: 네이버 금융 증시 뉴스
-      const crawlPromise = crawlNaverFinanceNews();
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
-      });
+    // 검색어로 경제 뉴스 크롤링
+    const crawlPromise = crawlNaverEconomyNews(searchQuery);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
+    });
+    
+    try {
+      const searchResults = await Promise.race([crawlPromise, timeoutPromise]);
+      // NewsArticle을 API 응답 형식으로 변환
+      newsItems = searchResults.map((article: any) => ({
+        title: article.title,
+        url: article.url,
+        link: article.url,
+        source: article.source || '네이버 뉴스',
+        publishedAt: article.publishedAt || '최근',
+        snippet: article.snippet || '',
+        summary: article.snippet || '',
+      }));
       
+      console.log(`[뉴스 API] ${newsItems.length}개의 경제 뉴스를 수집했습니다.`);
+    } catch (crawlError) {
+      console.error('[뉴스 API] 네이버 경제 뉴스 검색 오류:', crawlError);
+      
+      // 검색 실패 시 기본 경제 뉴스로 폴백
       try {
+        console.log('[뉴스 API] 기본 경제 뉴스로 폴백');
+        const crawlPromise = crawlNaverFinanceNews();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
+        });
         newsItems = await Promise.race([crawlPromise, timeoutPromise]);
-      } catch (crawlError) {
-        console.error('[뉴스 API] 네이버 금융 크롤링 오류:', crawlError);
+      } catch (fallbackError) {
         throw crawlError;
-      }
-    } else {
-      // 검색어가 있으면 네이버 뉴스 검색
-      const crawlPromise = crawlNaverStockNews(searchQuery);
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
-      });
-      
-      try {
-        const searchResults = await Promise.race([crawlPromise, timeoutPromise]);
-        // NewsArticle을 API 응답 형식으로 변환
-        newsItems = searchResults.map((article: any) => ({
-          title: article.title,
-          url: article.url,
-          link: article.url,
-          source: article.source || '네이버 뉴스',
-          publishedAt: article.publishedAt || '최근',
-          snippet: article.snippet || '',
-          summary: article.snippet || '',
-        }));
-      } catch (crawlError) {
-        console.error('[뉴스 API] 네이버 뉴스 검색 오류:', crawlError);
-        
-        // 검색 실패 시 기본 뉴스로 폴백
-        try {
-          const crawlPromise = crawlNaverFinanceNews();
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
-          });
-          newsItems = await Promise.race([crawlPromise, timeoutPromise]);
-        } catch (fallbackError) {
-          throw crawlError;
-        }
       }
     }
     } catch (crawlError) {

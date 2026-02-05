@@ -17,7 +17,7 @@ export default function Dashboard() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
-  const [searchQuery, setSearchQuery] = useState<string>('주식');
+  const [searchQuery, setSearchQuery] = useState<string>('경제');
   const lastSearchRef = useRef<string>('');
 
   // 타임아웃이 있는 fetch 헬퍼 함수 (캐시 무시)
@@ -54,7 +54,7 @@ export default function Dashboard() {
       console.log('[Dashboard] 빠른 뉴스 크롤링 시작');
       
       // 타임아웃 10초로 설정, 항상 최신 데이터 가져오기
-      const response = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
+      const response = await fetchWithTimeout('/api/news?q=경제&refresh=true', {}, 10000);
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -118,7 +118,7 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
         },
-        body: JSON.stringify({ searchQuery: '주식' }),
+        body: JSON.stringify({ searchQuery: '경제' }),
       }).then(() => {
         console.log('[Dashboard] 백그라운드 DB 저장 완료');
       }).catch((err) => {
@@ -132,7 +132,7 @@ export default function Dashboard() {
   // 백그라운드에서 뉴스 새로고침
   const refreshNewsInBackground = async () => {
     try {
-      const response = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
+      const response = await fetchWithTimeout('/api/news?q=경제&refresh=true', {}, 10000);
       if (response.ok) {
         const data = await response.json();
         if (data.articles && data.articles.length > 0) {
@@ -212,7 +212,7 @@ export default function Dashboard() {
   // URL 쿼리 파라미터 변경 감지하여 검색 실행
   useEffect(() => {
     const queryParam = searchParams.get('q');
-    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
+    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '경제';
     
     // 이전 검색어와 다를 때만 검색 실행 (무한 루프 방지)
     if (searchTerm !== lastSearchRef.current) {
@@ -225,7 +225,7 @@ export default function Dashboard() {
   // 초기 로딩 (마운트 시 한 번만)
   useEffect(() => {
     const queryParam = searchParams.get('q');
-    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
+    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '경제';
     
     // 초기 로딩: 검색어로 뉴스 로드
     console.log(`[Dashboard] 초기 로딩: "${searchTerm}"`);
@@ -384,7 +384,7 @@ export default function Dashboard() {
                 <Loader2 className="w-6 h-6 text-[#3182F6] animate-spin" />
               </div>
               <p className="text-gray-500 text-sm">
-                      {initialLoading ? '주식 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
+                      {initialLoading ? '경제 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
               </p>
             </div>
             {/* Skeleton UI */}
@@ -398,11 +398,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 최신 주식 뉴스 리스트 */}
+        {/* 최신 경제 뉴스 리스트 */}
         {!loading && !initialLoading && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">최신 뉴스를 확인해보세요</h2>
+              <h2 className="text-xl font-bold text-gray-900">경제 뉴스</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
@@ -410,7 +410,7 @@ export default function Dashboard() {
                     setError(null);
                     try {
                       // 빠른 뉴스 API 사용 (타임아웃 10초)
-                      const response = await fetchWithTimeout('/api/news?q=주식&refresh=true', {}, 10000);
+                      const response = await fetchWithTimeout('/api/news?q=경제&refresh=true', {}, 10000);
                       
                       if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -472,7 +472,7 @@ export default function Dashboard() {
                   뉴스가 없습니다
                 </h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  주식 관련 뉴스를 찾을 수 없습니다.
+                  경제 관련 뉴스를 찾을 수 없습니다.
                 </p>
                 <button
                   onClick={async () => {

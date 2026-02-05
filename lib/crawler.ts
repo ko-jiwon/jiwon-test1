@@ -159,13 +159,14 @@ export async function crawlNaverFinanceNews(): Promise<NewsArticle[]> {
 }
 
 /**
- * 네이버 뉴스 검색에서 주식 뉴스 크롤링
+ * 네이버 뉴스 검색에서 경제 뉴스 크롤링
  */
-export async function crawlNaverStockNews(searchQuery: string = '주식'): Promise<NewsArticle[]> {
+export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Promise<NewsArticle[]> {
   try {
-    // 네이버 뉴스 검색 URL (최신순 정렬)
+    // 네이버 경제 뉴스 검색 URL (최신순 정렬)
     // sort=1: 최신순, sort=0: 관련도순
-    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 증시')}&sort=1`;
+    // 경제 카테고리: section_id=101 (경제)
+    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 경제')}&sm=tab_jum&sort=1`;
     
     console.log(`[네이버] 크롤링 시작: ${searchUrl}`);
     
