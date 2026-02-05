@@ -40,7 +40,12 @@ export async function POST(request: NextRequest) {
 
     // 요청 본문에서 검색 키워드 가져오기
     const body = await request.json().catch(() => ({}));
-    const searchQuery = body.searchQuery || '공모주';
+    let searchQuery = body.searchQuery || '공모주';
+    
+    // 검색어에 "공모주"가 없으면 자동 추가
+    if (!searchQuery.includes('공모주') && !searchQuery.includes('IPO')) {
+      searchQuery = `${searchQuery} 공모주`;
+    }
     
     console.log(`🔍 경제 뉴스 크롤링 시작: "${searchQuery}"`);
 
@@ -48,6 +53,24 @@ export async function POST(request: NextRequest) {
     let newsArticles;
     try {
       newsArticles = await crawlEconomyNews(searchQuery);
+      
+      // 뉴스가 적으면 추가 검색어로 크롤링
+      if (newsArticles.length < 5) {
+        console.log('🔍 추가 뉴스 크롤링 시도...');
+        const additionalQueries = ['공모주 뉴스', '공모주 주식', 'IPO 뉴스'];
+        for (const query of additionalQueries) {
+          if (newsArticles.length >= 10) break;
+          const additionalArticles = await crawlEconomyNews(query);
+          const existingUrls = new Set(newsArticles.map(a => a.url));
+          for (const article of additionalArticles) {
+            if (!existingUrls.has(article.url)) {
+              newsArticles.push(article);
+              existingUrls.add(article.url);
+            }
+            if (newsArticles.length >= 10) break;
+          }
+        }
+      }
     } catch (error) {
       console.error('❌ 크롤링 오류:', error);
       return NextResponse.json(

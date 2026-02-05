@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { crawlEconomyNews, fetchArticleContent } from '@/lib/crawler';
+import { crawlEconomyNews, fetchArticleContent, crawlIPOSchedules } from '@/lib/crawler';
 import { summarizeNews } from '@/lib/gemini';
 import { supabase } from '@/lib/supabase';
 import { IPONews } from '@/types';
@@ -37,25 +37,115 @@ export async function POST(request: NextRequest) {
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
     
-    // 공모주 일정 관련 검색어들
-    const searchQueries = [
-      `${currentYear}년 ${currentMonth}월 공모주`,
-      `${currentYear}년 ${currentMonth}월 공모주 일정`,
-      `${currentYear}년 ${currentMonth}월 공모주 청약`,
-      `${currentYear}년 ${currentMonth}월 공모주 상장`,
-      '공모주 일정',
-      '공모주 청약',
-    ];
-
     let totalSaved = 0;
     const allErrors: string[] = [];
 
-    // 각 검색어로 크롤링
-    for (const searchQuery of searchQueries.slice(0, 3)) { // 최대 3개 검색어만 사용
-      try {
-        console.log(`🔍 공모주 일정 크롤링 시작: "${searchQuery}"`);
+    // 1. kokstock.com 및 공모주 일정 전용 크롤링
+    try {
+      console.log('🔍 kokstock.com 및 공모주 일정 크롤링 시작');
+      const scheduleArticles = await crawlIPOSchedules();
+      
+      console.log(`✅ ${scheduleArticles.length}개의 공모주 일정을 수집했습니다.`);
 
-        // 1. 뉴스 크롤링
+      // 일정 정보가 이미 포함된 기사들은 바로 저장
+      for (const article of scheduleArticles) {
+        try {
+          // kokstock.com 기사는 이미 일정 정보가 포함되어 있음
+          const isKokStock = article.source === 'kokstock.com';
+          
+          let summary;
+          if (isKokStock) {
+            // kokstock.com 기사는 snippet에서 일정 정보 추출
+            const scheduleMatch = article.snippet.match(/(\d{4}년 \d{1,2}월 \d{1,2}일.*?청약)/);
+            const stockMatch = article.title.match(/(.+?)\s+공모주/);
+            
+            summary = {
+              stock_name: stockMatch ? stockMatch[1] : article.title.split(' ')[0],
+              schedule: scheduleMatch ? scheduleMatch[1] : article.snippet.split('청약일정:')[1]?.split('.')[0] || '정보 없음',
+              summary: article.snippet,
+              keywords: '공모주, 청약, 일정',
+            };
+          } else {
+            // 일반 뉴스는 본문 가져와서 분석
+            const articleContent = await fetchArticleContent(article.url);
+            try {
+              summary = await summarizeNews(
+                article.title,
+                articleContent || article.snippet || article.title,
+                '공모주 일정'
+              );
+            } catch (geminiError) {
+              console.error(`❌ Gemini API 오류:`, geminiError);
+              continue;
+            }
+          }
+
+          // 일정 정보가 있는 경우만 저장
+          if (!summary.schedule || summary.schedule === '정보 없음') {
+            continue;
+          }
+
+          // 이번달 일정인지 확인
+          const scheduleText = summary.schedule;
+          const isCurrentMonth = 
+            scheduleText.includes(`${currentYear}년 ${currentMonth}월`) ||
+            scheduleText.includes(`${currentYear}년 ${currentMonth}일`);
+
+          if (!isCurrentMonth && !isKokStock) {
+            continue; // kokstock.com은 모든 일정 저장
+          }
+
+          // DB에 저장
+          const newsData: Omit<IPONews, 'id' | 'created_at'> = {
+            title: summary.stock_name || article.title.substring(0, 200),
+            summary: summary.summary || article.snippet || '요약 정보 없음',
+            schedule: summary.schedule,
+            ...(summary.keywords ? { keywords: summary.keywords } : {}),
+            link: article.url,
+          };
+
+          // 중복 체크
+          const { data: existing } = await supabase
+            .from('ipo_news')
+            .select('id')
+            .eq('link', article.url)
+            .maybeSingle();
+
+          if (existing) {
+            await supabase
+              .from('ipo_news')
+              .update(newsData)
+              .eq('link', article.url);
+          } else {
+            await supabase
+              .from('ipo_news')
+              .insert([newsData]);
+          }
+
+          totalSaved++;
+          console.log(`✅ 일정 저장: ${summary.stock_name} - ${summary.schedule}`);
+        } catch (articleError) {
+          console.error(`❌ 기사 처리 오류:`, articleError);
+          continue;
+        }
+      }
+    } catch (scheduleError) {
+      console.error(`❌ 일정 크롤링 오류:`, scheduleError);
+      allErrors.push('일정 크롤링 실패');
+    }
+
+    // 2. 공모주 뉴스 크롤링 (일반 뉴스)
+    const searchQueries = [
+      `${currentYear}년 ${currentMonth}월 공모주`,
+      '공모주 뉴스',
+      '공모주 주식',
+    ];
+
+    for (const searchQuery of searchQueries) {
+      try {
+        console.log(`🔍 공모주 뉴스 크롤링 시작: "${searchQuery}"`);
+
+        // 뉴스 크롤링
         const newsArticles = await crawlEconomyNews(searchQuery);
         
         if (!newsArticles || newsArticles.length === 0) {
@@ -89,21 +179,18 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
-            // 이번달 일정인지 확인
+            // 일정 정보가 있으면 저장 (이번달 필터링은 선택적)
             const scheduleText = summary.schedule;
             const isCurrentMonth = 
               scheduleText.includes(`${currentYear}년 ${currentMonth}월`) ||
               scheduleText.includes(`${currentYear}년 ${currentMonth}일`);
 
-            if (!isCurrentMonth) {
-              continue; // 이번달 일정이 아니면 스킵
-            }
-
+            // 이번달 일정이 아니어도 공모주 뉴스는 저장
             // DB에 저장
             const newsData: Omit<IPONews, 'id' | 'created_at'> = {
               title: summary.stock_name || article.title.substring(0, 200),
               summary: summary.summary || article.snippet || '요약 정보 없음',
-              schedule: summary.schedule,
+              schedule: summary.schedule !== '정보 없음' ? summary.schedule : undefined,
               ...(summary.keywords ? { keywords: summary.keywords } : {}),
               link: article.url,
             };
@@ -116,20 +203,18 @@ export async function POST(request: NextRequest) {
               .maybeSingle();
 
             if (existing) {
-              // 업데이트
               await supabase
                 .from('ipo_news')
                 .update(newsData)
                 .eq('link', article.url);
             } else {
-              // 삽입
               await supabase
                 .from('ipo_news')
                 .insert([newsData]);
             }
 
             totalSaved++;
-            console.log(`✅ 일정 저장: ${summary.stock_name} - ${summary.schedule}`);
+            console.log(`✅ 뉴스 저장: ${summary.stock_name || article.title}`);
           } catch (articleError) {
             console.error(`❌ 기사 처리 오류:`, articleError);
             continue;

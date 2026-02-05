@@ -346,3 +346,173 @@ export async function fetchArticleContent(url: string): Promise<string> {
     return '';
   }
 }
+
+/**
+ * kokstock.com에서 공모주 일정 크롤링
+ */
+export async function crawlKokStockIPO(): Promise<NewsArticle[]> {
+  try {
+    const url = 'https://www.kokstock.com/stock/ipo.asp';
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+        'Referer': 'https://www.kokstock.com/',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const articles: NewsArticle[] = [];
+
+    // 테이블에서 공모주 일정 추출 (다양한 테이블 구조 지원)
+    const tableSelectors = [
+      'table tr',
+      'table tbody tr',
+      '.table tr',
+      'table[class*="ipo"] tr',
+    ];
+
+    for (const selector of tableSelectors) {
+      $(selector).each((index, element) => {
+        if (articles.length >= 30) return false;
+
+        const $row = $(element);
+        const cells = $row.find('td, th');
+        
+        if (cells.length < 2) return;
+
+        // 첫 번째 셀: 청약일정 (예: 02.20 ~ 02.23)
+        let scheduleText = cells.eq(0).text().trim();
+        
+        // 두 번째 셀: 종목명 (링크가 있을 수 있음)
+        const stockNameEl = cells.eq(1).find('a').first();
+        let stockName = stockNameEl.text().trim() || cells.eq(1).text().trim();
+        
+        // 세 번째 셀: 주관사
+        const underwriter = cells.length > 2 ? cells.eq(2).text().trim() : '';
+        
+        // 네 번째 셀: 설명
+        const description = cells.length > 3 ? cells.eq(3).text().trim() : '';
+
+        // 날짜 형식이 다른 경우 처리 (예: 2026.02.20 ~ 2026.02.23)
+        if (!scheduleText.match(/\d{2}\.\d{2}/) && scheduleText.match(/\d{4}\.\d{2}\.\d{2}/)) {
+          const fullDateMatch = scheduleText.match(/(\d{4})\.(\d{2})\.(\d{2})\s*~\s*(\d{4})\.(\d{2})\.(\d{2})/);
+          if (fullDateMatch) {
+            const [, startYear, startMonth, startDay, endYear, endMonth, endDay] = fullDateMatch;
+            scheduleText = `${startYear}년 ${parseInt(startMonth)}월 ${parseInt(startDay)}일 ~ ${endYear}년 ${parseInt(endMonth)}월 ${parseInt(endDay)}일`;
+          }
+        }
+
+        if (scheduleText && stockName && stockName.length > 1 && !stockName.includes('청약일정')) {
+          // 날짜 파싱 (02.20 ~ 02.23 형식)
+          const dateMatch = scheduleText.match(/(\d{2})\.(\d{2})\s*~\s*(\d{2})\.(\d{2})/);
+          let formattedSchedule = scheduleText;
+          
+          if (dateMatch) {
+            const [, startMonth, startDay, endMonth, endDay] = dateMatch;
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            formattedSchedule = `${currentYear}년 ${parseInt(startMonth)}월 ${parseInt(startDay)}일 ~ ${currentYear}년 ${parseInt(endMonth)}월 ${parseInt(endDay)}일 청약`;
+          }
+
+          // 제목 생성
+          const title = `${stockName} 공모주 ${formattedSchedule}`;
+          
+          // URL 생성
+          const stockLink = stockNameEl.attr('href') || stockNameEl.attr('onclick');
+          let articleUrl = url;
+          if (stockLink && stockLink.startsWith('http')) {
+            articleUrl = stockLink;
+          } else if (stockLink && stockLink.includes('popStockIPO')) {
+            // JavaScript 함수 호출이면 원본 URL 사용
+            articleUrl = url;
+          }
+
+          // 중복 체크
+          if (!articles.some(a => a.title === title)) {
+            articles.push({
+              title,
+              url: articleUrl,
+              snippet: `${stockName} 공모주 청약일정: ${formattedSchedule}. ${underwriter ? `주관사: ${underwriter}. ` : ''}${description.substring(0, 150)}`,
+              source: 'kokstock.com',
+            });
+          }
+        }
+      });
+
+      if (articles.length > 0) break; // 첫 번째로 성공한 셀렉터 사용
+    }
+
+    console.log(`✅ kokstock.com에서 ${articles.length}개의 공모주 일정을 수집했습니다.`);
+    return articles;
+  } catch (error) {
+    console.error('kokstock.com 크롤링 오류:', error);
+    return [];
+  }
+}
+
+/**
+ * 공모주 일정 전용 크롤링 (kokstock.com 포함)
+ */
+export async function crawlIPOSchedules(): Promise<NewsArticle[]> {
+  try {
+    const allArticles: NewsArticle[] = [];
+    const existingTitles = new Set<string>();
+
+    // 1. kokstock.com 크롤링
+    try {
+      console.log('🔍 kokstock.com 공모주 일정 크롤링');
+      const kokStockArticles = await crawlKokStockIPO();
+      
+      for (const article of kokStockArticles) {
+        if (!existingTitles.has(article.title)) {
+          allArticles.push(article);
+          existingTitles.add(article.title);
+        }
+      }
+    } catch (error) {
+      console.error('kokstock.com 크롤링 실패:', error);
+    }
+
+    // 2. 공모주 일정 관련 뉴스 크롤링
+    try {
+      console.log('🔍 공모주 일정 뉴스 크롤링');
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const scheduleQueries = [
+        `${currentYear}년 ${currentMonth}월 공모주 일정`,
+        `${currentYear}년 ${currentMonth}월 공모주 청약`,
+        '공모주 일정',
+        '공모주 청약',
+      ];
+
+      for (const query of scheduleQueries.slice(0, 2)) {
+        const newsArticles = await crawlEconomyNews(query);
+        for (const article of newsArticles) {
+          if (allArticles.length >= 30) break;
+          if (!existingTitles.has(article.title)) {
+            allArticles.push(article);
+            existingTitles.add(article.title);
+          }
+        }
+        if (allArticles.length >= 30) break;
+      }
+    } catch (error) {
+      console.error('공모주 일정 뉴스 크롤링 실패:', error);
+    }
+
+    console.log(`✅ 총 ${allArticles.length}개의 공모주 일정을 수집했습니다.`);
+    return allArticles.slice(0, 30);
+  } catch (error) {
+    console.error('공모주 일정 크롤링 오류:', error);
+    return [];
+  }
+}
