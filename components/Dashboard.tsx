@@ -49,10 +49,21 @@ export default function Dashboard() {
             .slice(0, 10); // 최대 10개만
           setArticles(sortedArticles);
           
-          // 일정이 있는 기사만 필터링하여 오늘/이번 주 일정 추출
-          // 긴급도가 높은 항목 우선 정렬
+          // 일정이 있는 기사만 필터링하여 이번달 일정 추출
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth() + 1; // 1-12
+          const currentMonthStr = `${currentYear}년 ${currentMonth}월`;
+          
           const schedules = sortedArticles
-            .filter(article => article.schedule && article.schedule !== '정보 없음')
+            .filter(article => {
+              if (!article.schedule || article.schedule === '정보 없음') return false;
+              // 이번달 일정만 필터링 (2026년 2월 포함)
+              const scheduleText = article.schedule;
+              return scheduleText.includes(currentMonthStr) || 
+                     scheduleText.includes('2026년 2월') ||
+                     scheduleText.includes(`${currentYear}년 ${currentMonth}월`);
+            })
             .sort((a, b) => {
               // 긴급도가 높은 항목 우선 (청약중, 오늘 상장 등)
               const aUrgent = a.schedule?.includes('청약중') || a.schedule?.includes('오늘') ? 1 : 0;
@@ -64,16 +75,22 @@ export default function Dashboard() {
               const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
               return dateB - dateA;
             })
-            .slice(0, 5);
+            .slice(0, 10); // 이번달 일정은 더 많이 표시
           setUpcomingSchedules(schedules);
           
           console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
         } else {
-          // 데이터가 없으면 자동으로 공모주 뉴스 크롤링
-          console.log('기존 데이터가 없어 공모주 뉴스를 자동 크롤링합니다...');
-          // 자동 크롤링 실행
+          // 데이터가 없으면 자동으로 공모주 뉴스 및 일정 크롤링
+          console.log('기존 데이터가 없어 공모주 뉴스와 일정을 자동 크롤링합니다...');
+          // 병렬로 뉴스 크롤링과 일정 크롤링 실행
           try {
-            await handleSearch('공모주', false);
+            await Promise.all([
+              handleSearch('공모주', false),
+              // 일정 크롤링
+              fetch('/api/crawl-schedules', { method: 'POST' }).catch(err => {
+                console.error('일정 크롤링 오류:', err);
+              }),
+            ]);
             // 크롤링 후 데이터 다시 불러오기
             await fetchArticles();
           } catch (err) {
@@ -264,18 +281,52 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 1.1 오늘/이번 주 주요 일정 요약 */}
+        {/* 1.1 이번달 공모주 일정 */}
         {!loading && !initialLoading && (
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">오늘/이번 주 주요 일정</h2>
-              <Link 
-                href="/calendar" 
-                className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1"
-              >
-                전체 일정 보기
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+              <h2 className="text-xl font-bold text-gray-900">
+                {(() => {
+                  const now = new Date();
+                  const currentYear = now.getFullYear();
+                  const currentMonth = now.getMonth() + 1;
+                  return `${currentYear}년 ${currentMonth}월 공모주 일정`;
+                })()}
+              </h2>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const response = await fetch('/api/crawl-schedules', { method: 'POST' });
+                      const data = await response.json();
+                      if (data.success) {
+                        setSuccessMessage(data.message || '일정 크롤링이 완료되었습니다.');
+                        setTimeout(() => setSuccessMessage(null), 5000);
+                        await fetchArticles();
+                      } else {
+                        setError(data.error || '일정 크롤링 중 오류가 발생했습니다.');
+                      }
+                    } catch (err) {
+                      setError('일정 크롤링 중 오류가 발생했습니다.');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                  className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Calendar className="w-4 h-4" />
+                  일정 새로고침
+                </button>
+                <Link 
+                  href="/calendar" 
+                  className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1"
+                >
+                  전체 일정 보기
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
             </div>
             
             {upcomingSchedules.length > 0 ? (

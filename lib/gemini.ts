@@ -28,14 +28,26 @@ export async function summarizeNews(
     // gemini-1.5-flash 모델 사용
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentMonthStr = `${currentYear}년 ${currentMonth}월`;
+
     const prompt = `
 다음 뉴스 기사를 분석하여 "${searchKeyword}" 관련 핵심 정보를 추출해주세요.
 
 **중요**: 반드시 JSON 형식으로만 응답하고, 다른 설명은 포함하지 마세요.
 
+**일정 정보 추출 시 주의사항:**
+- 현재 날짜는 ${currentYear}년 ${currentMonth}월입니다.
+- 일정이 명시되어 있으면 정확한 날짜를 추출하세요 (예: "2026년 2월 15일 청약", "2월 20일 상장" 등)
+- 년도가 없으면 ${currentYear}년을 기본값으로 사용하세요
+- 월이 없으면 ${currentMonth}월을 기본값으로 사용하세요
+- 청약일, 상장일, 수요예측일 등 구체적인 일정을 추출하세요
+
 {
   "stock_name": "종목명 또는 주요 키워드 (없으면 '정보 없음')",
-  "schedule": "일정 정보 (예: 2024년 2월 15일 청약, 없으면 '정보 없음')",
+  "schedule": "일정 정보 (예: ${currentYear}년 ${currentMonth}월 15일 청약, ${currentYear}년 ${currentMonth}월 20일 상장, 없으면 '정보 없음')",
   "summary": "핵심 내용 요약 (100자 이내, ${searchKeyword} 관련 핵심 정보 포함)",
   "keywords": "핵심 키워드 3-5개 (쉼표로 구분, 예: '공모주, 청약, 상장, 주가, 투자')"
 }
