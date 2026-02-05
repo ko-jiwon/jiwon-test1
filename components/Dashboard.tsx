@@ -460,7 +460,7 @@ export default function Dashboard() {
         {!loading && !initialLoading && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">공모주 관련 경제 뉴스</h2>
+              <h2 className="text-xl font-bold text-gray-900">공모주 뉴스</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {

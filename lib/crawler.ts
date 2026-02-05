@@ -6,8 +6,9 @@ import { NewsArticle } from '@/types';
  */
 export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsArticle[]> {
   try {
-    // 네이버 뉴스 검색 URL (경제 카테고리, 최신순)
-    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 공모주')}&sm=tab_jum&sort=1`;
+    // 네이버 뉴스 검색 URL (최신순 정렬)
+    // sort=1: 최신순, sort=0: 관련도순
+    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' IPO')}&sort=1`;
     
     console.log(`[네이버] 크롤링 시작: ${searchUrl}`);
     
@@ -51,87 +52,108 @@ export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsAr
     const $ = cheerio.load(html);
     const articles: NewsArticle[] = [];
 
-    // 네이버 뉴스 검색 결과 파싱 (최신 셀렉터 우선 시도)
-    const selectors = [
-      '.news_area',
-      '.news_wrap',
-      '.news_info',
-      '.bx',
-      'div[class*="news"]',
-      '.api_ani_send',
-      'li[class*="news"]',
-    ];
+    // 네이버 뉴스 검색 결과 파싱 (정확한 셀렉터 사용)
+    console.log(`[네이버] HTML 파싱 시작 (길이: ${html.length})`);
+    
+    $('.news_area').each((index, element) => {
+      if (articles.length >= 10) return false;
 
-    let foundArticles = 0;
-    for (const selector of selectors) {
-      const elements = $(selector);
-      console.log(`[네이버] 셀렉터 "${selector}"로 ${elements.length}개 요소 발견`);
+      const $el = $(element);
       
-      elements.each((index, element) => {
+      // 제목 추출
+      const titleEl = $el.find('.news_tit');
+      const title = titleEl.attr('title') || titleEl.text().trim();
+      
+      // 링크 추출
+      let link = titleEl.attr('href') || $el.find('a.news_tit').attr('href') || '';
+      
+      // 출처 추출
+      const source = $el.find('.press').text().trim();
+      
+      // 날짜 추출
+      const date = $el.find('.info').last().text().trim();
+      
+      // snippet 추출
+      const snippet = $el.find('.news_dsc, .dsc_wrap, .api_txt_lines').text().trim();
+
+      // 필터링: 실제 뉴스 기사만 (메인 페이지 제외)
+      if (title && link && title.length > 5) {
+        // 메인 페이지나 쓸모없는 링크 제외
+        if (link.includes('naver.com/main') || 
+            link.includes('naver.com/') && !link.includes('/news/')) {
+          return;
+        }
+        
+        // 네이버 뉴스 링크 정규화
+        if (link.startsWith('http')) {
+          // 이미 절대 경로
+        } else if (link.startsWith('/')) {
+          link = `https://search.naver.com${link}`;
+        } else if (link.startsWith('./')) {
+          link = `https://search.naver.com${link.substring(1)}`;
+        } else {
+          link = `https://search.naver.com/${link}`;
+        }
+        
+        // 실제 뉴스 기사 URL인지 확인 (news.naver.com 포함)
+        if (!link.includes('news.naver.com') && !link.includes('news/')) {
+          return;
+        }
+
+        // 중복 체크
+        const urlKey = link.split('?')[0]; // 쿼리 파라미터 제거
+        if (!articles.some(a => {
+          const aUrlKey = a.url.split('?')[0];
+          return aUrlKey === urlKey || a.title === title;
+        })) {
+          articles.push({
+            title,
+            url: link,
+            snippet: snippet || '',
+            source: source || '네이버 뉴스',
+            publishedAt: date,
+          });
+        }
+      }
+    });
+    
+    console.log(`[네이버] .news_area로 ${articles.length}개 발견`);
+    
+    // .news_area로 충분하지 않으면 추가 셀렉터 시도
+    if (articles.length < 5) {
+      console.log('[네이버] 추가 셀렉터 시도');
+      $('.news_wrap, .news_info').each((index, element) => {
         if (articles.length >= 10) return false;
 
         const $el = $(element);
-        
-        // 제목 추출 (다양한 셀렉터 시도)
-        const titleSelectors = [
-          '.news_tit',
-          'a.news_tit',
-          '.title_link',
-          'a[href*="news.naver.com"]',
-          'a[href*="/news/"]',
-          'h3 a',
-          'h4 a',
-        ];
-        
-        let title = '';
-        let link = '';
-        
-        for (const titleSel of titleSelectors) {
-          const titleEl = $el.find(titleSel).first();
-          title = titleEl.text().trim() || titleEl.attr('title') || '';
-          link = titleEl.attr('href') || '';
-          if (title && link) break;
-        }
-        
-        // 링크가 없으면 다른 방법 시도
-        if (!link) {
-          link = $el.find('a[href*="news.naver.com"]').first().attr('href') || 
-                 $el.find('a[href*="/news/"]').first().attr('href') || 
-                 $el.find('a').first().attr('href') || '';
-        }
-        
-        // snippet 추출
-        const snippet = $el.find('.news_dsc, .dsc_wrap, .api_txt_lines, .dsc, .news_dsc_wrap').text().trim();
-        
-        // 출처 추출
-        const source = $el.find('.press, .info_group .press, .info, .press_name').text().trim();
+        const titleEl = $el.find('.news_tit, a.news_tit');
+        const title = titleEl.attr('title') || titleEl.text().trim();
+        let link = titleEl.attr('href') || '';
+        const source = $el.find('.press, .info_group .press').text().trim();
+        const snippet = $el.find('.news_dsc, .dsc_wrap').text().trim();
 
-        if (title && link && title.length > 5) {
-          // 네이버 뉴스 링크 정규화
+        if (title && link && title.length > 5 && !link.includes('naver.com/main')) {
           if (link.startsWith('http')) {
             // 이미 절대 경로
           } else if (link.startsWith('/')) {
             link = `https://search.naver.com${link}`;
-          } else if (link.startsWith('./')) {
-            link = `https://search.naver.com${link.substring(1)}`;
           } else {
             link = `https://search.naver.com/${link}`;
           }
-
-          // 중복 체크
-          if (!articles.some(a => a.url === link || a.title === title)) {
-            articles.push({
-              title,
-              url: link,
-              snippet: snippet || '',
-              source: source || '네이버 뉴스',
-            });
-            foundArticles++;
+          
+          if (link.includes('news.naver.com') || link.includes('news/')) {
+            const urlKey = link.split('?')[0];
+            if (!articles.some(a => a.url.split('?')[0] === urlKey || a.title === title)) {
+              articles.push({
+                title,
+                url: link,
+                snippet: snippet || '',
+                source: source || '네이버 뉴스',
+              });
+            }
           }
         }
       });
-
-      if (articles.length >= 10) break;
     }
 
     console.log(`✅ 네이버에서 ${articles.length}개의 뉴스를 수집했습니다.`);
