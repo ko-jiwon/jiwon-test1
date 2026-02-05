@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 
+// Next.js 캐싱 비활성화
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // 간단한 메모리 캐시 (30분 TTL)
 interface CacheEntry {
   data: any;
@@ -207,7 +211,9 @@ export async function GET(request: NextRequest) {
           timestamp: cached.timestamp,
         }, {
           headers: {
-            'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
           },
         });
       }
@@ -238,6 +244,12 @@ export async function GET(request: NextRequest) {
           cached: true,
           error: '최신 크롤링 실패, 캐시된 데이터 반환',
           timestamp: cached.timestamp,
+        }, {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
         });
       }
       
@@ -261,6 +273,12 @@ export async function GET(request: NextRequest) {
           cached: true,
           error: '최신 뉴스 없음, 캐시된 데이터 반환',
           timestamp: cached.timestamp,
+        }, {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
         });
       }
       
@@ -299,7 +317,9 @@ export async function GET(request: NextRequest) {
       timestamp: Date.now(),
     }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     });
   } catch (error) {
@@ -327,6 +347,12 @@ export async function GET(request: NextRequest) {
         cached: true,
         error: '최신 크롤링 실패, 캐시된 데이터 반환',
         timestamp: cached.timestamp,
+      }, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
       });
     }
 

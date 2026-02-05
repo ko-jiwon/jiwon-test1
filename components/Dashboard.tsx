@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
 
-  // 타임아웃이 있는 fetch 헬퍼 함수
+  // 타임아웃이 있는 fetch 헬퍼 함수 (캐시 무시)
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout: number = 10000): Promise<Response> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -24,6 +24,13 @@ export default function Dashboard() {
     try {
       const response = await fetch(url, {
         ...options,
+        cache: 'no-store', // 캐시 무시
+        headers: {
+          ...options.headers,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -102,7 +109,11 @@ export default function Dashboard() {
       // 비동기로 실행 (사용자 경험을 위해 await 하지 않음)
       fetch('/api/crawl', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+        },
         body: JSON.stringify({ searchQuery: '주식' }),
       }).then(() => {
         console.log('[Dashboard] 백그라운드 DB 저장 완료');
