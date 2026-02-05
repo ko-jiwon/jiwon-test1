@@ -16,19 +16,50 @@ export default function Dashboard() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
 
+  // 타임아웃이 있는 fetch 헬퍼 함수
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout: number = 10000): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`요청 타임아웃 (${timeout}ms 초과)`);
+      }
+      throw error;
+    }
+  };
+
   // 뉴스 크롤링 함수 (빠른 API 사용)
-  const loadNewsFromCrawl = async () => {
+  const loadNewsFromCrawl = async (): Promise<boolean> => {
     try {
       console.log('[Dashboard] 빠른 뉴스 크롤링 시작');
-      const response = await fetch('/api/news?q=공모주');
+      
+      // 타임아웃 10초로 설정
+      const response = await fetchWithTimeout('/api/news?q=공모주', {}, 10000);
       
       if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        console.error(`[Dashboard] HTTP 오류: ${response.status}`, errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('[Dashboard] API 응답:', { 
+        hasArticles: !!data.articles, 
+        articleCount: data.articles?.length || 0,
+        hasError: !!data.error,
+      });
       
       if (data.error) {
+        console.error('[Dashboard] API 에러:', data.error);
         throw new Error(data.error);
       }
       
@@ -49,13 +80,17 @@ export default function Dashboard() {
         saveToDatabaseInBackground();
         return true;
       } else {
-        console.warn('크롤링된 뉴스가 없습니다.');
+        console.warn('[Dashboard] 크롤링된 뉴스가 없습니다.');
         return false;
       }
     } catch (err) {
       console.error('[Dashboard] 뉴스 크롤링 오류:', err);
       if (err instanceof Error) {
-        console.error('[Dashboard] 오류 상세:', err.message);
+        console.error('[Dashboard] 오류 상세:', {
+          message: err.message,
+          name: err.name,
+          stack: err.stack,
+        });
       }
       throw err;
     }
@@ -82,20 +117,24 @@ export default function Dashboard() {
   // 백그라운드에서 뉴스 새로고침
   const refreshNewsInBackground = async () => {
     try {
-      const response = await fetch('/api/news?q=공모주&refresh=true');
-      const data = await response.json();
-      if (data.articles && data.articles.length > 0) {
-        const newsArticles: IPONews[] = data.articles.map((article: any) => ({
-          title: article.title || '제목 없음',
-          summary: article.snippet || article.summary || '',
-          link: article.url || article.link || '',
-          source: article.source || '뉴스',
-          created_at: new Date().toISOString(),
-        }));
-        setArticles(newsArticles);
+      const response = await fetchWithTimeout('/api/news?q=공모주&refresh=true', {}, 10000);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.articles && data.articles.length > 0) {
+          const newsArticles: IPONews[] = data.articles.map((article: any) => ({
+            title: article.title || '제목 없음',
+            summary: article.snippet || article.summary || '',
+            link: article.url || article.link || '',
+            source: article.source || '뉴스',
+            created_at: new Date().toISOString(),
+          }));
+          setArticles(newsArticles);
+          console.log('[Dashboard] 백그라운드 새로고침 완료');
+        }
       }
     } catch (err) {
       console.error('[Dashboard] 백그라운드 새로고침 오류:', err);
+      // 백그라운드 오류는 조용히 처리
     }
   };
 
@@ -105,78 +144,135 @@ export default function Dashboard() {
       setInitialLoading(true);
       setError(null);
       setConnectionError(null);
+      
+      let isCompleted = false;
+      
+      // 타임아웃 감지 (15초 후 강제 종료)
+      const timeoutId = setTimeout(() => {
+        if (!isCompleted) {
+          console.error('[Dashboard] 초기화 타임아웃 (15초 초과)');
+          setInitialLoading(false);
+          setError('뉴스를 불러오는데 시간이 너무 오래 걸립니다. 다시 시도해주세요.');
+          isCompleted = true;
+        }
+      }, 15000);
 
       try {
-        // 1. 먼저 빠른 뉴스 API로 크롤링 (캐시 활용)
+        // 1. 먼저 빠른 뉴스 API로 크롤링 (캐시 활용, 타임아웃 10초)
         console.log('[Dashboard] 초기 뉴스 로딩 시작');
-        const newsResponse = await fetch('/api/news?q=공모주');
-        
-        if (newsResponse.ok) {
-          const newsData = await newsResponse.json();
+        try {
+          const newsResponse = await fetchWithTimeout('/api/news?q=공모주', {}, 10000);
           
-          if (newsData.articles && newsData.articles.length > 0) {
-            // 크롤링된 뉴스 즉시 표시
-            const newsArticles: IPONews[] = newsData.articles.map((article: any) => ({
-              title: article.title || '제목 없음',
-              summary: article.snippet || article.summary || '',
-              link: article.url || article.link || '',
-              source: article.source || '뉴스',
-              created_at: new Date().toISOString(),
-            }));
+          if (newsResponse.ok) {
+            const newsData = await newsResponse.json();
+            console.log('[Dashboard] 뉴스 API 응답:', { 
+              articleCount: newsData.articles?.length || 0,
+              cached: newsData.cached,
+            });
             
-            setArticles(newsArticles);
-            setUpcomingSchedules([]);
-            console.log(`✅ ${newsArticles.length}개의 뉴스를 불러왔습니다. (캐시: ${newsData.cached ? '예' : '아니오'})`);
-            setInitialLoading(false);
-            
-            // 백그라운드에서 DB에 저장
-            saveToDatabaseInBackground();
-            return;
+            if (newsData.articles && newsData.articles.length > 0) {
+              // 크롤링된 뉴스 즉시 표시
+              const newsArticles: IPONews[] = newsData.articles.map((article: any) => ({
+                title: article.title || '제목 없음',
+                summary: article.snippet || article.summary || '',
+                link: article.url || article.link || '',
+                source: article.source || '뉴스',
+                created_at: new Date().toISOString(),
+              }));
+              
+              setArticles(newsArticles);
+              setUpcomingSchedules([]);
+              console.log(`✅ ${newsArticles.length}개의 뉴스를 불러왔습니다. (캐시: ${newsData.cached ? '예' : '아니오'})`);
+              isCompleted = true;
+              clearTimeout(timeoutId);
+              setInitialLoading(false);
+              
+              // 백그라운드에서 DB에 저장
+              saveToDatabaseInBackground();
+              return;
+            }
+          } else {
+            console.warn(`[Dashboard] 뉴스 API 실패: ${newsResponse.status}`);
           }
+        } catch (newsErr) {
+          console.error('[Dashboard] 뉴스 API 오류:', newsErr);
+          // 계속 진행 (다음 단계 시도)
         }
         
-        // 2. 뉴스 API 실패 시 DB에서 확인
+        // 2. 뉴스 API 실패 시 DB에서 확인 (타임아웃 5초)
         try {
-          const dbResponse = await fetch('/api/articles?sort=latest&limit=10', {
+          console.log('[Dashboard] DB에서 기존 데이터 확인');
+          const dbResponse = await fetchWithTimeout('/api/articles?sort=latest&limit=10', {
             cache: 'no-store',
-          });
-          const dbData = await dbResponse.json();
+          }, 5000);
           
-          if (dbData.articles && dbData.articles.length > 0) {
-            const sortedArticles = [...dbData.articles]
-              .sort((a, b) => {
-                const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-                return dateB - dateA;
-              })
-              .slice(0, 10);
-            setArticles(sortedArticles);
-            setUpcomingSchedules([]);
-            console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
-            setInitialLoading(false);
+          if (dbResponse.ok) {
+            const dbData = await dbResponse.json();
             
-            // 백그라운드에서 최신 뉴스 크롤링
-            refreshNewsInBackground();
-            return;
+            if (dbData.articles && dbData.articles.length > 0) {
+              const sortedArticles = [...dbData.articles]
+                .sort((a, b) => {
+                  const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                  const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                  return dateB - dateA;
+                })
+                .slice(0, 10);
+              setArticles(sortedArticles);
+              setUpcomingSchedules([]);
+              console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
+              isCompleted = true;
+              clearTimeout(timeoutId);
+              setInitialLoading(false);
+              
+              // 백그라운드에서 최신 뉴스 크롤링
+              refreshNewsInBackground();
+              return;
+            }
           }
         } catch (dbErr) {
           console.error('[Dashboard] DB 조회 오류:', dbErr);
+          // 계속 진행
         }
         
-        // 3. 둘 다 실패하면 직접 크롤링 시도
+        // 3. 둘 다 실패하면 직접 크롤링 시도 (타임아웃 10초)
         console.log('[Dashboard] 직접 크롤링 시도');
-        await loadNewsFromCrawl();
+        try {
+          const success = await loadNewsFromCrawl();
+          if (success) {
+            isCompleted = true;
+            clearTimeout(timeoutId);
+            setInitialLoading(false);
+            return;
+          }
+        } catch (crawlErr) {
+          console.error('[Dashboard] 직접 크롤링 실패:', crawlErr);
+          // 계속 진행 (폴백 처리)
+        }
+        
+        // 4. 모든 시도 실패 - 빈 상태 표시
+        console.warn('[Dashboard] 모든 데이터 소스 실패');
+        isCompleted = true;
+        clearTimeout(timeoutId);
+        setArticles([]);
+        setUpcomingSchedules([]);
+        setError('뉴스를 불러오는데 실패했습니다. 네트워크 연결을 확인하고 다시 시도해주세요.');
+        setInitialLoading(false);
         
       } catch (err) {
         console.error('[Dashboard] 초기화 오류:', err);
+        isCompleted = true;
+        clearTimeout(timeoutId);
+        
         const errorMessage = err instanceof Error ? err.message : '데이터를 불러오는 중 오류가 발생했습니다.';
         
         if (errorMessage.includes('Supabase') || errorMessage.includes('연결')) {
           setConnectionError('데이터베이스 연결에 실패했습니다. 환경 변수를 확인해주세요.');
+        } else if (errorMessage.includes('타임아웃')) {
+          setError('요청 시간이 초과되었습니다. 다시 시도해주세요.');
         } else {
           setError(errorMessage);
         }
-      } finally {
+        setArticles([]);
         setInitialLoading(false);
       }
     };
@@ -371,15 +467,24 @@ export default function Dashboard() {
                     setLoading(true);
                     setError(null);
                     try {
-                      // 빠른 뉴스 API 사용
-                      const response = await fetch('/api/news?q=공모주&refresh=true');
+                      // 빠른 뉴스 API 사용 (타임아웃 10초)
+                      const response = await fetchWithTimeout('/api/news?q=공모주&refresh=true', {}, 10000);
+                      
+                      if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                      }
+                      
                       const data = await response.json();
+                      
+                      if (data.error && !data.articles) {
+                        throw new Error(data.error);
+                      }
                       
                       if (data.articles && data.articles.length > 0) {
                         const newsArticles: IPONews[] = data.articles.map((article: any) => ({
                           title: article.title || '제목 없음',
-                          summary: article.snippet || '',
-                          link: article.url,
+                          summary: article.snippet || article.summary || '',
+                          link: article.url || article.link || '',
                           source: article.source || '뉴스',
                           created_at: new Date().toISOString(),
                         }));
@@ -390,8 +495,9 @@ export default function Dashboard() {
                         setError('뉴스를 찾을 수 없습니다.');
                       }
                     } catch (err) {
-                      console.error('뉴스 새로고침 오류:', err);
-                      setError('뉴스 새로고침 중 오류가 발생했습니다.');
+                      console.error('[Dashboard] 뉴스 새로고침 오류:', err);
+                      const errorMsg = err instanceof Error ? err.message : '뉴스 새로고침 중 오류가 발생했습니다.';
+                      setError(errorMsg.includes('타임아웃') ? '요청 시간이 초과되었습니다. 다시 시도해주세요.' : errorMsg);
                     } finally {
                       setLoading(false);
                     }
