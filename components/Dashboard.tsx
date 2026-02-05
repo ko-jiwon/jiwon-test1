@@ -407,15 +407,6 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* 타이틀 */}
-        <h1 className="text-[20px] font-bold text-gray-900 mb-6">
-          궁금한 뉴스를 바로 검색해 보세요.
-        </h1>
-        
-        {/* 검색바 */}
-        <div className="mb-8">
-          <SearchBar onSearch={(query) => handleSearch(query, true)} loading={loading || initialLoading} />
-        </div>
         {/* Connection Error Message */}
         {connectionError && (
           <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl">
@@ -469,7 +460,7 @@ export default function Dashboard() {
         {!loading && !initialLoading && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">주식 뉴스</h2>
+              <h2 className="text-xl font-bold text-gray-900">최신 뉴스를 확인해보세요</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
@@ -528,7 +519,7 @@ export default function Dashboard() {
             </div>
 
             {articles.length > 0 ? (
-              <div className="space-y-4">
+              <div className="space-y-[10px]">
                 {articles.map((article, index) => (
                   <ArticleCard key={article.id || article.link || `article-${index}`} article={article} />
                 ))}
