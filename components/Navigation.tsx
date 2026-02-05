@@ -26,14 +26,16 @@ export default function Navigation() {
   };
 
   return (
-    <header className="flex items-center justify-between px-6 my-4 h-[40px] bg-white sticky top-0 z-30">
-      {/* 왼쪽 로고 */}
-      <Link href="/" className={`${playfair.className} text-[28px] font-bold text-gray-900 hover:text-[#3182F6] transition-colors`}>
-        Stock News
-      </Link>
-      
-      {/* 오른쪽 검색바 */}
-      <form onSubmit={handleSearch} className="flex gap-2 items-center">
+    <header className="bg-white sticky top-0 z-30 my-4">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex items-center justify-between h-[40px]">
+          {/* 왼쪽 로고 */}
+          <Link href="/" className={`${playfair.className} text-[28px] font-bold text-gray-900 hover:text-[#3182F6] transition-colors`}>
+            Stock News
+          </Link>
+          
+          {/* 오른쪽 검색바 */}
+          <form onSubmit={handleSearch} className="flex gap-2 items-center">
         <input
           type="text"
           value={searchQuery}
@@ -48,6 +50,8 @@ export default function Navigation() {
           검색
         </button>
       </form>
+        </div>
+      </div>
     </header>
   );
 }
