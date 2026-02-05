@@ -9,50 +9,102 @@ export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsAr
     // 네이버 뉴스 검색 URL (경제 카테고리, 최신순)
     const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 공모주')}&sm=tab_jum&sort=1`;
     
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': 'https://www.naver.com/',
-      },
-    });
+    console.log(`[네이버] 크롤링 시작: ${searchUrl}`);
+    
+    // 타임아웃 설정 (15초)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    let response;
+    try {
+      response = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer': 'https://www.naver.com/',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('[네이버] 요청 타임아웃 (15초 초과)');
+        throw new Error('네이버 뉴스 크롤링 타임아웃');
+      }
+      throw fetchError;
+    }
 
     if (!response.ok) {
+      console.error(`[네이버] HTTP 오류: ${response.status} ${response.statusText}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const html = await response.text();
+    
+    if (!html || html.length < 100) {
+      console.error('[네이버] HTML 응답이 비어있거나 너무 짧습니다.');
+      return [];
+    }
+    
     const $ = cheerio.load(html);
     const articles: NewsArticle[] = [];
 
-    // 네이버 뉴스 검색 결과 파싱 (다양한 셀렉터 시도)
+    // 네이버 뉴스 검색 결과 파싱 (최신 셀렉터 우선 시도)
     const selectors = [
       '.news_area',
       '.news_wrap',
       '.news_info',
       '.bx',
       'div[class*="news"]',
+      '.api_ani_send',
+      'li[class*="news"]',
     ];
 
+    let foundArticles = 0;
     for (const selector of selectors) {
-      $(selector).each((index, element) => {
+      const elements = $(selector);
+      console.log(`[네이버] 셀렉터 "${selector}"로 ${elements.length}개 요소 발견`);
+      
+      elements.each((index, element) => {
         if (articles.length >= 10) return false;
 
         const $el = $(element);
         
         // 제목 추출 (다양한 셀렉터 시도)
-        const titleEl = $el.find('.news_tit, a.news_tit, .title_link, a[href*="news.naver.com"]').first();
-        const title = titleEl.text().trim() || titleEl.attr('title') || '';
+        const titleSelectors = [
+          '.news_tit',
+          'a.news_tit',
+          '.title_link',
+          'a[href*="news.naver.com"]',
+          'a[href*="/news/"]',
+          'h3 a',
+          'h4 a',
+        ];
         
-        // 링크 추출
-        let link = titleEl.attr('href') || $el.find('a[href*="news.naver.com"]').first().attr('href') || $el.find('a').first().attr('href');
+        let title = '';
+        let link = '';
+        
+        for (const titleSel of titleSelectors) {
+          const titleEl = $el.find(titleSel).first();
+          title = titleEl.text().trim() || titleEl.attr('title') || '';
+          link = titleEl.attr('href') || '';
+          if (title && link) break;
+        }
+        
+        // 링크가 없으면 다른 방법 시도
+        if (!link) {
+          link = $el.find('a[href*="news.naver.com"]').first().attr('href') || 
+                 $el.find('a[href*="/news/"]').first().attr('href') || 
+                 $el.find('a').first().attr('href') || '';
+        }
         
         // snippet 추출
-        const snippet = $el.find('.news_dsc, .dsc_wrap, .api_txt_lines, .dsc').text().trim();
+        const snippet = $el.find('.news_dsc, .dsc_wrap, .api_txt_lines, .dsc, .news_dsc_wrap').text().trim();
         
         // 출처 추출
-        const source = $el.find('.press, .info_group .press, .info').text().trim();
+        const source = $el.find('.press, .info_group .press, .info, .press_name').text().trim();
 
         if (title && link && title.length > 5) {
           // 네이버 뉴스 링크 정규화
@@ -60,6 +112,8 @@ export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsAr
             // 이미 절대 경로
           } else if (link.startsWith('/')) {
             link = `https://search.naver.com${link}`;
+          } else if (link.startsWith('./')) {
+            link = `https://search.naver.com${link.substring(1)}`;
           } else {
             link = `https://search.naver.com/${link}`;
           }
@@ -72,6 +126,7 @@ export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsAr
               snippet: snippet || '',
               source: source || '네이버 뉴스',
             });
+            foundArticles++;
           }
         }
       });
@@ -80,9 +135,18 @@ export async function crawlNaverEconomyNews(searchQuery: string): Promise<NewsAr
     }
 
     console.log(`✅ 네이버에서 ${articles.length}개의 뉴스를 수집했습니다.`);
+    if (articles.length === 0) {
+      console.warn('[네이버] 뉴스를 찾을 수 없습니다. HTML 구조가 변경되었을 수 있습니다.');
+      // 디버깅을 위해 HTML 일부 출력
+      const bodyText = $('body').text().substring(0, 500);
+      console.log('[네이버] HTML 본문 일부:', bodyText);
+    }
     return articles.slice(0, 10);
   } catch (error) {
-    console.error('네이버 경제 뉴스 크롤링 오류:', error);
+    console.error('[네이버] 크롤링 오류:', error);
+    if (error instanceof Error) {
+      console.error('[네이버] 오류 상세:', error.message, error.stack);
+    }
     return [];
   }
 }
@@ -95,19 +159,44 @@ export async function crawlGoogleNews(searchQuery: string = '공모주'): Promis
     // Google News 검색 URL (최신순 정렬, 한국어)
     const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery + ' 공모주')}&hl=ko&gl=KR&ceid=KR:ko&when=7d`;
     
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-    });
+    console.log(`[Google News] 크롤링 시작: ${searchUrl}`);
+    
+    // 타임아웃 설정 (15초)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    let response;
+    try {
+      response = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('[Google News] 요청 타임아웃 (15초 초과)');
+        throw new Error('Google News 크롤링 타임아웃');
+      }
+      throw fetchError;
+    }
 
     if (!response.ok) {
+      console.error(`[Google News] HTTP 오류: ${response.status} ${response.statusText}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const html = await response.text();
+    
+    if (!html || html.length < 100) {
+      console.error('[Google News] HTML 응답이 비어있거나 너무 짧습니다.');
+      return [];
+    }
+    
     const $ = cheerio.load(html);
     const articles: NewsArticle[] = [];
 
@@ -155,9 +244,17 @@ export async function crawlGoogleNews(searchQuery: string = '공모주'): Promis
     });
 
     console.log(`✅ Google News에서 ${articles.length}개의 뉴스를 수집했습니다.`);
+    if (articles.length === 0) {
+      console.warn('[Google News] 뉴스를 찾을 수 없습니다. HTML 구조가 변경되었을 수 있습니다.');
+      const articleCount = $('article').length;
+      console.log(`[Google News] 발견된 article 태그: ${articleCount}개`);
+    }
     return articles.slice(0, 10);
   } catch (error) {
-    console.error('Google News 크롤링 오류:', error);
+    console.error('[Google News] 크롤링 오류:', error);
+    if (error instanceof Error) {
+      console.error('[Google News] 오류 상세:', error.message, error.stack);
+    }
     return []; // 에러 발생 시 빈 배열 반환 (throw 대신)
   }
 }
@@ -217,6 +314,11 @@ export async function crawlDaumNews(searchQuery: string): Promise<NewsArticle[]>
  * 구글과 네이버에서 경제 뉴스 크롤링 (통합)
  * 검색 날짜 기준 최신 기사 10개 수집
  */
+// Rate Limiting: 요청 간격을 두기 위한 헬퍼 함수
+async function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function crawlEconomyNews(searchQuery: string = '공모주'): Promise<NewsArticle[]> {
   try {
     const allArticles: NewsArticle[] = [];
@@ -226,10 +328,13 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
     // 검색어에 "공모주"가 없으면 추가
     const enhancedQuery = searchQuery.includes('공모주') ? searchQuery : `${searchQuery} 공모주`;
 
+    console.log(`[통합 크롤링] 시작: "${enhancedQuery}"`);
+
     // 1. 네이버 경제 뉴스 크롤링
     try {
-      console.log(`🔍 네이버 경제 뉴스 크롤링: ${enhancedQuery}`);
+      console.log(`🔍 [1/3] 네이버 경제 뉴스 크롤링: ${enhancedQuery}`);
       const naverArticles = await crawlNaverEconomyNews(enhancedQuery);
+      console.log(`[네이버] ${naverArticles.length}개 수집 완료`);
       
       for (const article of naverArticles) {
         if (allArticles.length >= 10) break;
@@ -240,14 +345,21 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
           existingTitles.add(article.title);
         }
       }
+      
+      // Rate Limiting: 다음 요청 전 대기
+      await delay(1000);
     } catch (error) {
-      console.error('네이버 크롤링 실패:', error);
+      console.error('[네이버] 크롤링 실패:', error);
+      if (error instanceof Error) {
+        console.error('[네이버] 오류 상세:', error.message);
+      }
     }
 
     // 2. Google News 크롤링
     try {
-      console.log(`🔍 Google News 크롤링: ${enhancedQuery}`);
+      console.log(`🔍 [2/3] Google News 크롤링: ${enhancedQuery}`);
       const googleArticles = await crawlGoogleNews(enhancedQuery);
+      console.log(`[Google News] ${googleArticles.length}개 수집 완료`);
       
       for (const article of googleArticles) {
         if (allArticles.length >= 10) break;
@@ -258,15 +370,22 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
           existingTitles.add(article.title);
         }
       }
+      
+      // Rate Limiting: 다음 요청 전 대기
+      await delay(1000);
     } catch (error) {
-      console.error('Google News 크롤링 실패:', error);
+      console.error('[Google News] 크롤링 실패:', error);
+      if (error instanceof Error) {
+        console.error('[Google News] 오류 상세:', error.message);
+      }
     }
 
     // 3. 다음 뉴스 크롤링 (네이버와 구글이 실패한 경우)
     if (allArticles.length < 5) {
       try {
-        console.log(`🔍 다음 뉴스 크롤링: ${enhancedQuery}`);
+        console.log(`🔍 [3/3] 다음 뉴스 크롤링: ${enhancedQuery}`);
         const daumArticles = await crawlDaumNews(enhancedQuery);
+        console.log(`[다음] ${daumArticles.length}개 수집 완료`);
         
         for (const article of daumArticles) {
           if (allArticles.length >= 10) break;
@@ -278,14 +397,25 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
           }
         }
       } catch (error) {
-        console.error('다음 뉴스 크롤링 실패:', error);
+        console.error('[다음] 크롤링 실패:', error);
+        if (error instanceof Error) {
+          console.error('[다음] 오류 상세:', error.message);
+        }
       }
     }
 
-    console.log(`✅ 총 ${allArticles.length}개의 뉴스를 수집했습니다.`);
+    console.log(`✅ [통합 크롤링] 총 ${allArticles.length}개의 뉴스를 수집했습니다.`);
+    
+    if (allArticles.length === 0) {
+      console.warn('⚠️ [통합 크롤링] 모든 소스에서 뉴스를 찾을 수 없습니다.');
+    }
+    
     return allArticles.slice(0, 10);
   } catch (error) {
-    console.error('경제 뉴스 크롤링 오류:', error);
+    console.error('❌ [통합 크롤링] 오류:', error);
+    if (error instanceof Error) {
+      console.error('❌ [통합 크롤링] 오류 상세:', error.message, error.stack);
+    }
     return [];
   }
 }
@@ -295,53 +425,109 @@ export async function crawlEconomyNews(searchQuery: string = '공모주'): Promi
  */
 export async function fetchArticleContent(url: string): Promise<string> {
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      // 타임아웃 설정 (10초)
-      signal: AbortSignal.timeout(10000),
-    });
+    console.log(`[본문 추출] 시작: ${url}`);
+    
+    // 타임아웃 설정 (8초로 단축 - 여러 기사 처리 시 시간 절약)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    let response;
+    try {
+      response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error(`[본문 추출] 타임아웃: ${url}`);
+        return '';
+      }
+      throw fetchError;
+    }
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      console.error(`[본문 추출] HTTP 오류: ${response.status} ${response.statusText} - ${url}`);
+      return '';
     }
 
     const html = await response.text();
+    
+    if (!html || html.length < 100) {
+      console.warn(`[본문 추출] HTML이 비어있거나 너무 짧음: ${url}`);
+      return '';
+    }
+    
     const $ = cheerio.load(html);
     
     // 다양한 뉴스 사이트 구조에 맞게 본문 추출
     let content = '';
     
     // 네이버 뉴스
-    content = $('.go_trans._article_content, #articleBodyContents, .article_body, #articleBodyContents').first().text().trim();
+    const naverSelectors = [
+      '.go_trans._article_content',
+      '#articleBodyContents',
+      '.article_body',
+      '#newsEndContents',
+      '.news_end_body',
+    ];
+    for (const selector of naverSelectors) {
+      content = $(selector).first().text().trim();
+      if (content && content.length > 50) break;
+    }
     
     // 일반적인 뉴스 사이트
-    if (!content) {
-      content = $('article .article-body, article .post-content, .article-body, .post-content, .news-content, .content, .article_view').first().text().trim();
+    if (!content || content.length < 50) {
+      const generalSelectors = [
+        'article .article-body',
+        'article .post-content',
+        '.article-body',
+        '.post-content',
+        '.news-content',
+        '.content',
+        '.article_view',
+        '[class*="article"]',
+        '[class*="content"]',
+      ];
+      for (const selector of generalSelectors) {
+        content = $(selector).first().text().trim();
+        if (content && content.length > 50) break;
+      }
     }
     
     // 최후의 수단: article 태그 또는 main 태그
-    if (!content) {
+    if (!content || content.length < 50) {
       content = $('article, main').first().text().trim();
     }
     
     // 그래도 없으면 body에서 스크립트 제거
-    if (!content) {
-      $('script, style, nav, header, footer, .ad, .advertisement').remove();
+    if (!content || content.length < 50) {
+      $('script, style, nav, header, footer, .ad, .advertisement, .ad-banner').remove();
       content = $('body').text().trim();
     }
 
     // 공백 정리
     content = content.replace(/\s+/g, ' ').trim();
     
+    if (content && content.length > 50) {
+      console.log(`[본문 추출] 성공: ${content.length}자 - ${url}`);
+    } else {
+      console.warn(`[본문 추출] 본문이 너무 짧거나 없음: ${url}`);
+    }
+    
     return content || '';
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error(`기사 내용 가져오기 타임아웃: ${url}`);
+      console.error(`[본문 추출] 타임아웃: ${url}`);
     } else {
-      console.error(`기사 내용 가져오기 오류 (${url}):`, error);
+      console.error(`[본문 추출] 오류: ${url}`, error);
+      if (error instanceof Error) {
+        console.error(`[본문 추출] 오류 상세:`, error.message);
+      }
     }
     return '';
   }

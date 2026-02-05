@@ -50,9 +50,15 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 경제 뉴스 크롤링 시작: "${searchQuery}"`);
 
     // 1. 구글/네이버 경제 뉴스에서 최신 뉴스 10개 크롤링
-    let newsArticles;
+    let newsArticles: any[] = [];
     try {
+      console.log(`[API] 크롤링 시작: "${searchQuery}"`);
+      const startTime = Date.now();
+      
       newsArticles = await crawlEconomyNews(searchQuery);
+      
+      const elapsedTime = Date.now() - startTime;
+      console.log(`[API] 크롤링 완료: ${newsArticles.length}개 수집 (${elapsedTime}ms 소요)`);
       
       // 뉴스가 적으면 추가 검색어로 크롤링
       if (newsArticles.length < 5) {
@@ -60,19 +66,33 @@ export async function POST(request: NextRequest) {
         const additionalQueries = ['공모주 뉴스', '공모주 주식', 'IPO 뉴스'];
         for (const query of additionalQueries) {
           if (newsArticles.length >= 10) break;
-          const additionalArticles = await crawlEconomyNews(query);
-          const existingUrls = new Set(newsArticles.map(a => a.url));
-          for (const article of additionalArticles) {
-            if (!existingUrls.has(article.url)) {
-              newsArticles.push(article);
-              existingUrls.add(article.url);
+          try {
+            const additionalArticles = await crawlEconomyNews(query);
+            const existingUrls = new Set(newsArticles.map(a => a.url));
+            for (const article of additionalArticles) {
+              if (!existingUrls.has(article.url)) {
+                newsArticles.push(article);
+                existingUrls.add(article.url);
+              }
+              if (newsArticles.length >= 10) break;
             }
-            if (newsArticles.length >= 10) break;
+            // Rate Limiting
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (queryError) {
+            console.error(`[API] 추가 검색어 "${query}" 크롤링 실패:`, queryError);
+            continue;
           }
         }
       }
     } catch (error) {
-      console.error('❌ 크롤링 오류:', error);
+      console.error('❌ [API] 크롤링 오류:', error);
+      if (error instanceof Error) {
+        console.error('❌ [API] 오류 상세:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        });
+      }
       return NextResponse.json(
         { 
           error: '뉴스 크롤링 중 오류가 발생했습니다.',
@@ -106,21 +126,37 @@ export async function POST(request: NextRequest) {
     for (const article of newsArticles) {
       try {
         processedCount++;
+        const articleStartTime = Date.now();
         console.log(`[${processedCount}/${newsArticles.length}] 처리 중: ${article.title}`);
 
         // 2-1. 기사 본문 가져오기
-        const articleContent = await fetchArticleContent(article.url);
+        let articleContent = '';
+        try {
+          articleContent = await fetchArticleContent(article.url);
+          if (!articleContent && article.snippet) {
+            console.log(`[${processedCount}] 본문 추출 실패, snippet 사용: ${article.url}`);
+          }
+        } catch (contentError) {
+          console.error(`[${processedCount}] 본문 추출 오류:`, contentError);
+          // 본문 추출 실패해도 계속 진행
+        }
         
         // 2-2. Gemini API로 요약 (핵심 키워드 및 핵심 내용 추출)
         let summary;
         try {
+          const summaryStartTime = Date.now();
           summary = await summarizeNews(
             article.title,
             articleContent || article.snippet || article.title,
             searchQuery
           );
+          const summaryTime = Date.now() - summaryStartTime;
+          console.log(`[${processedCount}] Gemini 요약 완료 (${summaryTime}ms)`);
         } catch (geminiError) {
-          console.error(`❌ Gemini API 오류 (${article.url}):`, geminiError);
+          console.error(`❌ [${processedCount}] Gemini API 오류:`, geminiError);
+          if (geminiError instanceof Error) {
+            console.error(`❌ [${processedCount}] Gemini 오류 상세:`, geminiError.message);
+          }
           // Gemini API 실패 시 기본값 사용
           summary = {
             stock_name: article.title.substring(0, 50) || '정보 없음',
@@ -130,6 +166,9 @@ export async function POST(request: NextRequest) {
           };
           errors.push(`Gemini API 오류: ${article.title}`);
         }
+        
+        const articleTime = Date.now() - articleStartTime;
+        console.log(`[${processedCount}] 기사 처리 완료 (${articleTime}ms)`);
 
         // 2-3. DB에 upsert (link 기준으로 중복 체크)
         const newsData: Omit<IPONews, 'id' | 'created_at'> = {
@@ -218,13 +257,21 @@ export async function POST(request: NextRequest) {
       errors: errors.length > 0 ? errors.slice(0, 5) : undefined, // 최대 5개만 반환
     });
   } catch (error) {
-    console.error('❌ API 전체 오류:', error);
+    console.error('❌ [API] 전체 오류:', error);
+    if (error instanceof Error) {
+      console.error('❌ [API] 오류 상세:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+    }
     return NextResponse.json(
       { 
         error: '서버 오류가 발생했습니다.',
         details: error instanceof Error ? error.message : '알 수 없는 오류',
         message: '데이터 수집 및 요약 실패',
-        savedCount: 0
+        savedCount: 0,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
