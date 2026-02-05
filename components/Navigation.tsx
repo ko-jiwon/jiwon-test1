@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Calendar, Newspaper, Settings, TrendingUp } from 'lucide-react';
+import { Home, Calendar, Newspaper, TrendingUp } from 'lucide-react';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -11,7 +11,6 @@ export default function Navigation() {
     { href: '/', label: 'Dashboard', icon: Home },
     { href: '/calendar', label: 'IPO Calendar', icon: Calendar },
     { href: '/news', label: 'News Center', icon: Newspaper },
-    { href: '/settings', label: 'Settings', icon: Settings },
   ];
 
   return (
