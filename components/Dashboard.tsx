@@ -16,60 +16,161 @@ export default function Dashboard() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
 
+  // 뉴스 크롤링 함수 (빠른 API 사용)
+  const loadNewsFromCrawl = async () => {
+    try {
+      console.log('[Dashboard] 빠른 뉴스 크롤링 시작');
+      const response = await fetch('/api/news?q=공모주');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      if (data.articles && data.articles.length > 0) {
+        // 크롤링된 뉴스를 임시로 표시 (DB 저장은 백그라운드에서)
+        const newsArticles: IPONews[] = data.articles.map((article: any) => ({
+          title: article.title || '제목 없음',
+          summary: article.snippet || article.summary || '',
+          link: article.url || article.link || '',
+          source: article.source || '뉴스',
+          created_at: new Date().toISOString(),
+        }));
+        
+        setArticles(newsArticles);
+        console.log(`✅ ${newsArticles.length}개의 뉴스를 크롤링했습니다.`);
+        
+        // 백그라운드에서 DB에 저장 (사용자 경험을 위해 비동기)
+        saveToDatabaseInBackground();
+        return true;
+      } else {
+        console.warn('크롤링된 뉴스가 없습니다.');
+        return false;
+      }
+    } catch (err) {
+      console.error('[Dashboard] 뉴스 크롤링 오류:', err);
+      if (err instanceof Error) {
+        console.error('[Dashboard] 오류 상세:', err.message);
+      }
+      throw err;
+    }
+  };
+
+  // 백그라운드에서 DB에 저장
+  const saveToDatabaseInBackground = async () => {
+    try {
+      // 비동기로 실행 (사용자 경험을 위해 await 하지 않음)
+      fetch('/api/crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchQuery: '공모주' }),
+      }).then(() => {
+        console.log('[Dashboard] 백그라운드 DB 저장 완료');
+      }).catch((err) => {
+        console.error('[Dashboard] 백그라운드 DB 저장 오류:', err);
+      });
+    } catch (err) {
+      console.error('[Dashboard] 백그라운드 DB 저장 오류:', err);
+    }
+  };
+
+  // 백그라운드에서 뉴스 새로고침
+  const refreshNewsInBackground = async () => {
+    try {
+      const response = await fetch('/api/news?q=공모주&refresh=true');
+      const data = await response.json();
+      if (data.articles && data.articles.length > 0) {
+        const newsArticles: IPONews[] = data.articles.map((article: any) => ({
+          title: article.title || '제목 없음',
+          summary: article.snippet || article.summary || '',
+          link: article.url || article.link || '',
+          source: article.source || '뉴스',
+          created_at: new Date().toISOString(),
+        }));
+        setArticles(newsArticles);
+      }
+    } catch (err) {
+      console.error('[Dashboard] 백그라운드 새로고침 오류:', err);
+    }
+  };
+
   useEffect(() => {
     // 초기 로딩: 공모주 뉴스 자동 크롤링 및 표시
-    // 성능 최적화: 병렬 로딩 및 캐싱 활용
     const initializeData = async () => {
       setInitialLoading(true);
       setError(null);
       setConnectionError(null);
 
       try {
-        // 병렬로 데이터 페칭 (성능 향상)
-        const [articlesResponse] = await Promise.all([
-          fetch('/api/articles?sort=latest&limit=10', {
-            // 캐시 활용 (최대 30초)
-            cache: 'no-store', // 실시간 데이터 필요
-            headers: {
-              'Cache-Control': 'no-cache',
-            },
-          }),
-        ]);
+        // 1. 먼저 빠른 뉴스 API로 크롤링 (캐시 활용)
+        console.log('[Dashboard] 초기 뉴스 로딩 시작');
+        const newsResponse = await fetch('/api/news?q=공모주');
         
-        const data = await articlesResponse.json();
-        
-        if (data.articles && data.articles.length > 0) {
-          // 기존 데이터가 있으면 최신순으로 정렬하여 표시 (최대 10개)
-          const sortedArticles = [...data.articles]
-            .sort((a, b) => {
-              const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-              const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-              return dateB - dateA; // 최신순
-            })
-            .slice(0, 10); // 최대 10개만
-          setArticles(sortedArticles);
+        if (newsResponse.ok) {
+          const newsData = await newsResponse.json();
           
-          // 일정 섹션 제거 - 더 이상 일정 필터링하지 않음
-          setUpcomingSchedules([]);
-          
-          console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
-        } else {
-          // 데이터가 없으면 자동으로 공모주 경제 뉴스 크롤링
-          console.log('기존 데이터가 없어 공모주 경제 뉴스를 자동 크롤링합니다...');
-          try {
-            // 공모주 관련 경제 뉴스 크롤링
-            await handleSearch('공모주', false);
-            // 크롤링 후 데이터 다시 불러오기
-            await fetchArticles();
-          } catch (err) {
-            console.error('자동 크롤링 오류:', err);
+          if (newsData.articles && newsData.articles.length > 0) {
+            // 크롤링된 뉴스 즉시 표시
+            const newsArticles: IPONews[] = newsData.articles.map((article: any) => ({
+              title: article.title || '제목 없음',
+              summary: article.snippet || article.summary || '',
+              link: article.url || article.link || '',
+              source: article.source || '뉴스',
+              created_at: new Date().toISOString(),
+            }));
+            
+            setArticles(newsArticles);
+            setUpcomingSchedules([]);
+            console.log(`✅ ${newsArticles.length}개의 뉴스를 불러왔습니다. (캐시: ${newsData.cached ? '예' : '아니오'})`);
+            setInitialLoading(false);
+            
+            // 백그라운드에서 DB에 저장
+            saveToDatabaseInBackground();
+            return;
           }
         }
+        
+        // 2. 뉴스 API 실패 시 DB에서 확인
+        try {
+          const dbResponse = await fetch('/api/articles?sort=latest&limit=10', {
+            cache: 'no-store',
+          });
+          const dbData = await dbResponse.json();
+          
+          if (dbData.articles && dbData.articles.length > 0) {
+            const sortedArticles = [...dbData.articles]
+              .sort((a, b) => {
+                const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return dateB - dateA;
+              })
+              .slice(0, 10);
+            setArticles(sortedArticles);
+            setUpcomingSchedules([]);
+            console.log(`✅ ${sortedArticles.length}개의 기존 기사를 불러왔습니다.`);
+            setInitialLoading(false);
+            
+            // 백그라운드에서 최신 뉴스 크롤링
+            refreshNewsInBackground();
+            return;
+          }
+        } catch (dbErr) {
+          console.error('[Dashboard] DB 조회 오류:', dbErr);
+        }
+        
+        // 3. 둘 다 실패하면 직접 크롤링 시도
+        console.log('[Dashboard] 직접 크롤링 시도');
+        await loadNewsFromCrawl();
+        
       } catch (err) {
-        console.error('초기화 오류:', err);
+        console.error('[Dashboard] 초기화 오류:', err);
         const errorMessage = err instanceof Error ? err.message : '데이터를 불러오는 중 오류가 발생했습니다.';
         
-        // 연결 에러인지 확인
         if (errorMessage.includes('Supabase') || errorMessage.includes('연결')) {
           setConnectionError('데이터베이스 연결에 실패했습니다. 환경 변수를 확인해주세요.');
         } else {
@@ -237,15 +338,25 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Loading State */}
+        {/* Loading State with Skeleton */}
         {(loading || initialLoading) && (
-          <div className="flex flex-col justify-center items-center py-16">
-            <div className="w-12 h-12 rounded-full bg-[#3182F6]/10 flex items-center justify-center mb-4">
-              <Loader2 className="w-6 h-6 text-[#3182F6] animate-spin" />
+          <div className="space-y-4">
+            <div className="flex flex-col justify-center items-center py-8 mb-4">
+              <div className="w-12 h-12 rounded-full bg-[#3182F6]/10 flex items-center justify-center mb-4">
+                <Loader2 className="w-6 h-6 text-[#3182F6] animate-spin" />
+              </div>
+              <p className="text-gray-500 text-sm">
+                {initialLoading ? '공모주 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
+              </p>
             </div>
-            <p className="text-gray-500 text-sm">
-              {initialLoading ? '공모주 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
-            </p>
+            {/* Skeleton UI */}
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-xl p-5 border border-gray-100 animate-pulse">
+                <div className="h-5 bg-gray-200 rounded w-3/4 mb-3"></div>
+                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -258,11 +369,29 @@ export default function Dashboard() {
                 <button
                   onClick={async () => {
                     setLoading(true);
+                    setError(null);
                     try {
-                      await handleSearch('공모주', true);
-                      await fetchArticles();
+                      // 빠른 뉴스 API 사용
+                      const response = await fetch('/api/news?q=공모주&refresh=true');
+                      const data = await response.json();
+                      
+                      if (data.articles && data.articles.length > 0) {
+                        const newsArticles: IPONews[] = data.articles.map((article: any) => ({
+                          title: article.title || '제목 없음',
+                          summary: article.snippet || '',
+                          link: article.url,
+                          source: article.source || '뉴스',
+                          created_at: new Date().toISOString(),
+                        }));
+                        setArticles(newsArticles);
+                        setSuccessMessage(`${newsArticles.length}개의 최신 뉴스를 불러왔습니다.`);
+                        setTimeout(() => setSuccessMessage(null), 3000);
+                      } else {
+                        setError('뉴스를 찾을 수 없습니다.');
+                      }
                     } catch (err) {
-                      setError('뉴스 크롤링 중 오류가 발생했습니다.');
+                      console.error('뉴스 새로고침 오류:', err);
+                      setError('뉴스 새로고침 중 오류가 발생했습니다.');
                     } finally {
                       setLoading(false);
                     }
@@ -285,21 +414,37 @@ export default function Dashboard() {
 
             {articles.length > 0 ? (
               <div className="space-y-4">
-                {articles.slice(0, 10).map((article, index) => (
-                  <ArticleCard key={article.id || article.link || index} article={article} />
+                {articles.map((article, index) => (
+                  <ArticleCard key={article.id || article.link || `article-${index}`} article={article} />
                 ))}
               </div>
-            ) : (
+            ) : !initialLoading && !loading ? (
               <div className="bg-white rounded-xl p-12 border border-gray-100 text-center">
                 <Sparkles className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   뉴스가 없습니다
                 </h3>
-                <p className="text-sm text-gray-500">
-                  검색어를 입력하여 공모주 뉴스를 검색해보세요
+                <p className="text-sm text-gray-500 mb-4">
+                  공모주 관련 뉴스를 찾을 수 없습니다.
                 </p>
+                <button
+                  onClick={async () => {
+                    setLoading(true);
+                    setError(null);
+                    try {
+                      await loadNewsFromCrawl();
+                    } catch (err) {
+                      setError('뉴스 크롤링 중 오류가 발생했습니다.');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-[#3182F6] text-white rounded-lg hover:bg-[#2563EB] transition-colors text-sm font-medium"
+                >
+                  다시 시도
+                </button>
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </main>

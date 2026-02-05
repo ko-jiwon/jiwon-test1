@@ -47,6 +47,11 @@ export default function ArticleCard({ article }: ArticleCardProps) {
           
           {/* 하단 정보 */}
           <div className="flex items-center gap-4 flex-wrap">
+            {article.source && (
+              <div className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                <span>{article.source}</span>
+              </div>
+            )}
             {article.schedule && article.schedule !== '정보 없음' && (
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-md">
                 <Calendar className="w-3.5 h-3.5 text-emerald-600" />

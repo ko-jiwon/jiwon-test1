@@ -5,6 +5,9 @@
     },
     "app/api/crawl-schedules/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/news/route.ts": {
+      "maxDuration": 30
     }
   }
 }

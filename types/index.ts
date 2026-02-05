@@ -6,6 +6,7 @@ export interface IPONews {
   link: string;
   created_at?: string;
   keywords?: string;
+  source?: string; // 출처 (네이버 뉴스, Google News 등)
   // PRD 요구사항: 상세 IPO 정보
   stock_name?: string; // 종목명
   confirmed_price?: string; // 확정공모가
