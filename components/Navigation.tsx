@@ -26,9 +26,9 @@ export default function Navigation() {
   };
 
   return (
-    <header className="flex items-center justify-between px-6 my-4 h-[40px] bg-white border-b border-gray-100 sticky top-0 z-30">
+    <header className="flex items-center justify-between px-6 my-4 h-[40px] bg-white sticky top-0 z-30">
       {/* 왼쪽 로고 */}
-      <Link href="/" className={`${playfair.className} text-xl font-bold text-gray-900 hover:text-[#3182F6] transition-colors`}>
+      <Link href="/" className={`${playfair.className} text-[28px] font-bold text-gray-900 hover:text-[#3182F6] transition-colors`}>
         Stock News
       </Link>
       
