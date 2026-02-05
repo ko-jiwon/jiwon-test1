@@ -406,18 +406,16 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 최상단 검색 필드 */}
-      <div className="bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="mb-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
-            <p className="text-sm text-gray-500">주식 정보를 한눈에 확인하세요</p>
-          </div>
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* 타이틀 */}
+        <h1 className="text-[20px] font-bold text-gray-900 mb-6">
+          궁금한 뉴스를 바로 검색해 보세요.
+        </h1>
+        
+        {/* 검색바 */}
+        <div className="mb-8">
           <SearchBar onSearch={(query) => handleSearch(query, true)} loading={loading || initialLoading} />
         </div>
-      </div>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Connection Error Message */}
         {connectionError && (
           <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, Sparkles, ChevronDown } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { StockName } from '@/types';
 
 interface SearchBarProps {
@@ -84,44 +84,33 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
   return (
     <form onSubmit={handleSubmit} className="w-full">
       <div className="relative" ref={searchRef}>
-        <div className="absolute inset-y-0 left-0 flex items-center pl-5 pointer-events-none z-10">
-          <Search className="w-5 h-5 text-gray-400" />
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedIndex(-1);
+            }}
+            onFocus={() => {
+              if (suggestions.length > 0) {
+                setShowSuggestions(true);
+              }
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="주식 뉴스 검색 (예: 삼성전자, 2월 증시, 반도체)"
+            className="flex-1 px-4 py-3 text-base bg-white border border-gray-300 rounded-[6px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder:text-gray-400 disabled:bg-gray-50 disabled:cursor-not-allowed"
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-3 bg-blue-600 text-white rounded-[6px] font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all"
+          >
+            {loading ? '검색 중' : '검색'}
+          </button>
         </div>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelectedIndex(-1);
-          }}
-          onFocus={() => {
-            if (suggestions.length > 0) {
-              setShowSuggestions(true);
-            }
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="주식 뉴스 검색 (예: 삼성전자, 2월 증시, 반도체)"
-          className="w-full pl-14 pr-36 py-4 text-base bg-white border-2 border-gray-100 rounded-2xl focus:border-[#3182F6] focus:ring-2 focus:ring-[#3182F6]/10 outline-none transition-all placeholder:text-gray-400 disabled:bg-gray-50 disabled:cursor-not-allowed"
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2.5 bg-[#3182F6] text-white rounded-xl hover:bg-[#2563EB] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center gap-2 font-medium text-sm shadow-sm hover:shadow-md z-10"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>검색 중</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              <span>검색</span>
-            </>
-          )}
-        </button>
 
         {/* 자동완성 드롭다운 */}
         {showSuggestions && suggestions.length > 0 && (
