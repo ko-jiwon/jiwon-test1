@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Playfair_Display } from 'next/font/google';
 
 const playfair = Playfair_Display({ 
@@ -12,16 +12,24 @@ const playfair = Playfair_Display({
 });
 
 export default function Navigation() {
-  const [searchQuery, setSearchQuery] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // URL 쿼리 파라미터에서 검색어 가져오기
+  useEffect(() => {
+    const queryParam = searchParams.get('q');
+    if (queryParam) {
+      setSearchQuery(decodeURIComponent(queryParam));
+    }
+  }, [searchParams]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      // 검색 쿼리를 URL에 추가하거나 상태로 관리
-      router.push(`/?q=${encodeURIComponent(searchQuery.trim())}`);
-      // 페이지 새로고침하여 검색 실행
-      window.location.href = `/?q=${encodeURIComponent(searchQuery.trim())}`;
+    const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery) {
+      // URL 쿼리 파라미터 업데이트 (페이지 새로고침 없이)
+      router.push(`/?q=${encodeURIComponent(trimmedQuery)}`);
     }
   };
 
