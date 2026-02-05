@@ -503,17 +503,16 @@ export default function Dashboard() {
                     }
                   }}
                   disabled={loading}
-                  className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-sm text-[#4b4b4b] hover:text-[#333333] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Sparkles className="w-4 h-4" />
                   뉴스 새로고침
                 </button>
+                <div className="w-[1px] h-[20px] bg-[#C0C0C0]"></div>
                 <Link 
                   href="/news" 
-                  className="text-sm text-[#3182F6] hover:text-[#2563EB] font-medium flex items-center gap-1"
+                  className="text-sm text-[#4b4b4b] hover:text-[#333333] font-medium"
                 >
                   전체 뉴스 보기
-                  <ArrowRight className="w-4 h-4" />
                 </Link>
               </div>
             </div>
