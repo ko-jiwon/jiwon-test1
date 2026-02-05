@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
+import iconv from 'iconv-lite';
 
 // 간단한 메모리 캐시 (30분 TTL)
 interface CacheEntry {
@@ -27,6 +28,7 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         'Referer': 'https://finance.naver.com/',
       },
@@ -40,7 +42,25 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const html = await response.text();
+    // 네이버는 EUC-KR 인코딩을 사용하므로 iconv-lite로 디코딩
+    const buffer = await response.arrayBuffer();
+    let html: string;
+    
+    try {
+      // EUC-KR로 디코딩 시도
+      html = iconv.decode(Buffer.from(buffer), 'euc-kr');
+      console.log('[네이버 금융] EUC-KR 디코딩 성공');
+    } catch (eucKrError) {
+      // EUC-KR 디코딩 실패 시 UTF-8로 시도
+      console.warn('[네이버 금융] EUC-KR 디코딩 실패, UTF-8로 시도');
+      try {
+        html = iconv.decode(Buffer.from(buffer), 'utf-8');
+      } catch (utf8Error) {
+        // UTF-8도 실패하면 기본 텍스트로 시도
+        console.warn('[네이버 금융] UTF-8 디코딩 실패, 기본 텍스트로 시도');
+        html = await response.text();
+      }
+    }
     
     if (!html || html.length < 100) {
       console.error('[네이버 금융] HTML 응답이 비어있거나 너무 짧습니다.');
@@ -56,7 +76,9 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
       
       const $elem = $(elem);
       const titleEl = $elem.find('a');
-      const title = titleEl.text().trim();
+      let title = titleEl.text().trim();
+      // 공백 정규화 및 특수문자 제거 (한글은 유지)
+      title = title.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
       let link = titleEl.attr('href') || '';
       
       // 링크 정규화
@@ -70,7 +92,9 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
       
       // 요약 추출 (.articleSummary)
       const $summary = $elem.next('.articleSummary');
-      const summary = $summary.text().trim() || '';
+      let summary = $summary.text().trim() || '';
+      // 공백 정규화 및 특수문자 제거 (한글은 유지)
+      summary = summary.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
       
       // 날짜 추출 (부모 요소에서 .date 찾기)
       const $parent = $elem.closest('dl, li, .newsList');
@@ -102,7 +126,9 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
         if (newsItems.length >= 10) return false;
         
         const $elem = $(elem);
-        const title = $elem.text().trim();
+        let title = $elem.text().trim();
+        // 공백 정규화 및 특수문자 제거 (한글은 유지)
+        title = title.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
         let link = $elem.attr('href') || '';
         
         if (link && !link.startsWith('http')) {
@@ -114,7 +140,9 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
         }
         
         const $parent = $elem.closest('dl');
-        const summary = $parent.find('dd').text().trim();
+        let summary = $parent.find('dd').text().trim() || '';
+        // 공백 정규화 및 특수문자 제거 (한글은 유지)
+        summary = summary.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
         const date = $parent.find('.date, .wdate').text().trim() || '최근';
         const source = $parent.find('.press, .press_name').text().trim() || '네이버 금융';
         
