@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
@@ -7,8 +10,8 @@ export async function GET(request: Request) {
     const sortBy = searchParams.get('sort') || 'latest'; // 'latest' | 'relevance'
     const limit = parseInt(searchParams.get('limit') || '10');
 
-    // 환경 변수 확인
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    // Supabase 설정 확인
+    if (!isSupabaseConfigured() || !supabase) {
       console.error('❌ Supabase 환경 변수가 설정되지 않았습니다.');
       return NextResponse.json(
         { 

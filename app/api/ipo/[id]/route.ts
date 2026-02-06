@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(
   request: Request,
@@ -8,8 +11,8 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // 환경 변수 확인
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    // Supabase 설정 확인
+    if (!isSupabaseConfigured() || !supabase) {
       return NextResponse.json(
         { 
           error: '데이터베이스 연결 설정이 없습니다.',

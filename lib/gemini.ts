@@ -1,16 +1,30 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GeminiSummary } from '@/types';
 
-// 환경 변수 검증
-const geminiApiKey = process.env.GEMINI_API_KEY;
+// 환경 변수 가져오기 (빌드 타임 에러 방지를 위해 throw 하지 않음)
+const geminiApiKey = process.env.GEMINI_API_KEY || '';
 
-if (!geminiApiKey) {
-  throw new Error(
-    'Gemini API 키가 설정되지 않았습니다. .env.local 파일에 GEMINI_API_KEY를 추가하세요.'
-  );
+// Gemini API 클라이언트 초기화 (환경 변수가 없어도 빌드는 성공하도록)
+let genAI: GoogleGenerativeAI | null = null;
+
+if (geminiApiKey) {
+  try {
+    genAI = new GoogleGenerativeAI(geminiApiKey);
+  } catch (error) {
+    console.error('Gemini API 클라이언트 초기화 실패:', error);
+  }
+} else {
+  // 빌드 타임에는 에러를 던지지 않고 경고만 출력
+  if (typeof window === 'undefined') {
+    // 서버 사이드에서만 경고 (빌드 타임)
+    console.warn('⚠️ Gemini API 키가 설정되지 않았습니다. Gemini 기능을 사용할 수 없습니다.');
+  }
 }
 
-const genAI = new GoogleGenerativeAI(geminiApiKey);
+// Gemini API 사용 가능 여부 확인 함수
+export function isGeminiConfigured(): boolean {
+  return !!(geminiApiKey && genAI);
+}
 
 /**
  * 뉴스 기사를 분석하여 핵심 키워드와 핵심 내용을 추출
@@ -24,6 +38,10 @@ export async function summarizeNews(
   newsContent: string,
   searchKeyword: string = '공모주'
 ): Promise<GeminiSummary> {
+  if (!isGeminiConfigured() || !genAI) {
+    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 파일에 GEMINI_API_KEY를 추가하세요.');
+  }
+
   try {
     // gemini-1.5-flash 모델 사용
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });

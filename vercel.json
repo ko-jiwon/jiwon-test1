@@ -1,5 +1,9 @@
 {
+  "buildCommand": "next build",
   "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 10
+    },
     "app/api/crawl/route.ts": {
       "maxDuration": 60
     },

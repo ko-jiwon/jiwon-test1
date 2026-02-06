@@ -12,8 +12,8 @@ import { IPONews } from '@/types';
  */
 export async function POST(request: NextRequest) {
   try {
-    // 환경 변수 확인
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    // Supabase 설정 확인
+    if (!isSupabaseConfigured() || !supabase) {
       return NextResponse.json(
         { 
           error: '데이터베이스 연결 설정이 없습니다.',
