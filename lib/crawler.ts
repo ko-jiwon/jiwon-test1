@@ -165,8 +165,8 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
   try {
     // 네이버 경제 뉴스 검색 URL (최신순 정렬)
     // sort=1: 최신순, sort=0: 관련도순
-    // 경제 카테고리: section_id=101 (경제)
-    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 경제')}&sm=tab_jum&sort=1`;
+    // start=1: 첫 페이지부터 시작 (더 많은 결과)
+    const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(searchQuery + ' 경제')}&sm=tab_jum&sort=1&start=1`;
     
     console.log(`[네이버] 크롤링 시작: ${searchUrl}`);
     
@@ -189,7 +189,7 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
     } catch (fetchError) {
       clearTimeout(timeoutId);
       if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        console.error('[네이버] 요청 타임아웃 (15초 초과)');
+        console.error('[네이버] 요청 타임아웃 (8초 초과)');
         throw new Error('네이버 뉴스 크롤링 타임아웃');
       }
       throw fetchError;
@@ -278,8 +278,10 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
     console.log(`[네이버] .news_area로 ${articles.length}개 발견`);
     
     // .news_area로 충분하지 않으면 추가 셀렉터 시도
-    if (articles.length < 5) {
-      console.log('[네이버] 추가 셀렉터 시도');
+    if (articles.length < 30) {
+      console.log(`[네이버] 추가 셀렉터 시도 (현재: ${articles.length}개, 목표: 30개)`);
+      
+      // 추가 셀렉터 1: .news_wrap, .news_info
       $('.news_wrap, .news_info').each((index, element) => {
         if (articles.length >= 30) return false;
 
@@ -312,6 +314,45 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
           }
         }
       });
+      
+      // 추가 셀렉터 2: .api_subject_bx, .news_contents
+      if (articles.length < 30) {
+        console.log(`[네이버] 추가 셀렉터 2 시도 (현재: ${articles.length}개)`);
+        $('.api_subject_bx, .news_contents, .news_item').each((index, element) => {
+          if (articles.length >= 30) return false;
+          
+          const $el = $(element);
+          const titleEl = $el.find('a, .title, .news_tit');
+          const title = titleEl.attr('title') || titleEl.text().trim();
+          let link = titleEl.attr('href') || $el.find('a').first().attr('href') || '';
+          const source = $el.find('.press, .info_group .press, .press_name').text().trim();
+          const snippet = $el.find('.news_dsc, .dsc_wrap, .summary').text().trim();
+          const date = $el.find('.info, .date').last().text().trim();
+          
+          if (title && link && title.length > 5 && !link.includes('naver.com/main')) {
+            if (link.startsWith('http')) {
+              // 이미 절대 경로
+            } else if (link.startsWith('/')) {
+              link = `https://search.naver.com${link}`;
+            } else {
+              link = `https://search.naver.com/${link}`;
+            }
+            
+            if (link.includes('news.naver.com') || link.includes('news/')) {
+              const urlKey = link.split('?')[0];
+              if (!articles.some(a => a.url.split('?')[0] === urlKey || a.title === title)) {
+                articles.push({
+                  title,
+                  url: link,
+                  snippet: snippet || '',
+                  source: source || '네이버 뉴스',
+                  publishedAt: date,
+                });
+              }
+            }
+          }
+        });
+      }
     }
 
     console.log(`✅ 네이버에서 ${articles.length}개의 뉴스를 수집했습니다.`);

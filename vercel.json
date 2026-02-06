@@ -7,7 +7,7 @@
       "maxDuration": 60
     },
     "app/api/news/route.ts": {
-      "maxDuration": 30
+      "maxDuration": 10
     }
   }
 }

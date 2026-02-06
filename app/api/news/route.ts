@@ -6,6 +6,7 @@ import { crawlNaverEconomyNews } from '@/lib/crawler';
 // Next.js 캐싱 비활성화
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 10; // Vercel 타임아웃 명시 (10초)
 
 // 간단한 메모리 캐시 (30분 TTL)
 interface CacheEntry {
@@ -25,9 +26,9 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
     
     console.log(`[네이버 금융] 크롤링 시작: ${url}`);
     
-    // 타임아웃 설정 (15초)
+    // 타임아웃 설정 (8초) - Vercel 제한 고려
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     
     const response = await fetch(url, {
       headers: {
@@ -232,10 +233,10 @@ export async function GET(request: NextRequest) {
     // 모든 검색어에 대해 네이버 경제 뉴스 검색
     let newsItems: any[] = [];
     
-    // 검색어로 경제 뉴스 크롤링
+    // 검색어로 경제 뉴스 크롤링 (타임아웃 8초)
     const crawlPromise = crawlNaverEconomyNews(searchQuery);
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
+      setTimeout(() => reject(new Error('크롤링 타임아웃 (8초 초과)')), 8000);
     });
     
     try {
@@ -252,6 +253,11 @@ export async function GET(request: NextRequest) {
       }));
       
       console.log(`[뉴스 API] ${newsItems.length}개의 경제 뉴스를 수집했습니다.`);
+      
+      // 30개 미만이면 경고
+      if (newsItems.length < 30) {
+        console.warn(`[뉴스 API] 경고: ${newsItems.length}개만 수집됨 (목표: 30개)`);
+      }
     } catch (crawlError) {
       console.error('[뉴스 API] 네이버 경제 뉴스 검색 오류:', crawlError);
       
@@ -260,37 +266,32 @@ export async function GET(request: NextRequest) {
         console.log('[뉴스 API] 기본 경제 뉴스로 폴백');
         const crawlPromise = crawlNaverFinanceNews();
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('크롤링 타임아웃 (20초 초과)')), 20000);
+          setTimeout(() => reject(new Error('크롤링 타임아웃 (8초 초과)')), 8000);
         });
         newsItems = await Promise.race([crawlPromise, timeoutPromise]);
       } catch (fallbackError) {
+        // 폴백도 실패하면 캐시된 데이터 확인
+        const cached = cache.get(cacheKey);
+        if (cached) {
+          console.log('[뉴스 API] 크롤링 실패, 캐시된 데이터 반환');
+          return NextResponse.json({
+            success: true,
+            data: cached.data,
+            articles: cached.data,
+            count: cached.data.length,
+            cached: true,
+            error: '최신 크롤링 실패, 캐시된 데이터 반환',
+            timestamp: cached.timestamp,
+          }, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+            },
+          });
+        }
         throw crawlError;
       }
-    }
-    } catch (crawlError) {
-      console.error('[뉴스 API] 크롤링 오류:', crawlError);
-      
-      // 캐시된 데이터가 있으면 반환
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        console.log('[뉴스 API] 크롤링 실패, 캐시된 데이터 반환');
-        return NextResponse.json({
-          success: true,
-          data: cached.data,
-          count: cached.data.length,
-          cached: true,
-          error: '최신 크롤링 실패, 캐시된 데이터 반환',
-          timestamp: cached.timestamp,
-        }, {
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        });
-      }
-      
-      throw crawlError;
     }
     
     const elapsedTime = Date.now() - startTime;

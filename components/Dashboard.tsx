@@ -86,6 +86,13 @@ export default function Dashboard() {
         setArticles(newsArticles);
         console.log(`✅ ${newsArticles.length}개의 뉴스를 크롤링했습니다.`);
         
+        // 30개 미만이면 경고
+        if (newsArticles.length < 30) {
+          console.warn(`⚠️ 경고: ${newsArticles.length}개만 수집됨 (목표: 30개)`);
+        } else {
+          console.log(`✅ 목표 달성: 30개 뉴스 수집 완료`);
+        }
+        
         // 백그라운드에서 DB에 저장 (사용자 경험을 위해 비동기)
         saveToDatabaseInBackground();
         return true;
