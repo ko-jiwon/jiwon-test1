@@ -56,7 +56,7 @@ export async function crawlNaverFinanceNews(): Promise<NewsArticle[]> {
     
     // 네이버 금융 뉴스 구조: dl > dt > a (제목), dl > dd (요약)
     $('dl').each((index, element) => {
-      if (articles.length >= 15) return false;
+      if (articles.length >= 30) return false;
 
       const $dl = $(element);
       
@@ -112,7 +112,7 @@ export async function crawlNaverFinanceNews(): Promise<NewsArticle[]> {
     // 추가 셀렉터 시도 (.articleSubject 등)
     if (articles.length < 10) {
       $('.articleSubject, .newsList li').each((index, element) => {
-        if (articles.length >= 15) return false;
+        if (articles.length >= 30) return false;
 
         const $el = $(element);
         const $titleEl = $el.find('a').first();
@@ -148,7 +148,7 @@ export async function crawlNaverFinanceNews(): Promise<NewsArticle[]> {
     }
 
     console.log(`✅ 네이버 금융에서 ${articles.length}개의 뉴스를 수집했습니다.`);
-    return articles.slice(0, 15);
+    return articles.slice(0, 30);
   } catch (error) {
     console.error('[네이버 금융] 크롤링 오류:', error);
     if (error instanceof Error) {
@@ -214,7 +214,7 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
     console.log(`[네이버] HTML 파싱 시작 (길이: ${html.length})`);
     
     $('.news_area').each((index, element) => {
-      if (articles.length >= 10) return false;
+      if (articles.length >= 30) return false;
 
       const $el = $(element);
       
@@ -281,7 +281,7 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
     if (articles.length < 5) {
       console.log('[네이버] 추가 셀렉터 시도');
       $('.news_wrap, .news_info').each((index, element) => {
-        if (articles.length >= 10) return false;
+        if (articles.length >= 30) return false;
 
         const $el = $(element);
         const titleEl = $el.find('.news_tit, a.news_tit');
@@ -321,7 +321,7 @@ export async function crawlNaverEconomyNews(searchQuery: string = '경제'): Pro
       const bodyText = $('body').text().substring(0, 500);
       console.log('[네이버] HTML 본문 일부:', bodyText);
     }
-    return articles.slice(0, 10);
+    return articles.slice(0, 30);
   } catch (error) {
     console.error('[네이버] 크롤링 오류:', error);
     if (error instanceof Error) {
@@ -429,7 +429,7 @@ export async function crawlGoogleNews(searchQuery: string = '주식'): Promise<N
       const articleCount = $('article').length;
       console.log(`[Google News] 발견된 article 태그: ${articleCount}개`);
     }
-    return articles.slice(0, 10);
+    return articles.slice(0, 30);
   } catch (error) {
     console.error('[Google News] 크롤링 오류:', error);
     if (error instanceof Error) {
@@ -483,7 +483,7 @@ export async function crawlDaumNews(searchQuery: string): Promise<NewsArticle[]>
     });
 
     console.log(`✅ 다음 뉴스에서 ${articles.length}개의 뉴스를 수집했습니다.`);
-    return articles.slice(0, 10);
+    return articles.slice(0, 30);
   } catch (error) {
     console.error('다음 뉴스 크롤링 오류:', error);
     return [];
@@ -519,7 +519,7 @@ export async function crawlStockNews(searchQuery: string = '주식'): Promise<Ne
       console.log(`[네이버 금융] ${financeArticles.length}개 수집 완료`);
       
       for (const article of financeArticles) {
-        if (allArticles.length >= 15) break;
+        if (allArticles.length >= 30) break;
         const urlKey = article.url.split('?')[0];
         if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
           allArticles.push(article);
@@ -543,7 +543,7 @@ export async function crawlStockNews(searchQuery: string = '주식'): Promise<Ne
         console.log(`[네이버 검색] ${naverArticles.length}개 수집 완료`);
         
         for (const article of naverArticles) {
-          if (allArticles.length >= 15) break;
+          if (allArticles.length >= 30) break;
           const urlKey = article.url.split('?')[0];
           if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
             allArticles.push(article);
@@ -568,7 +568,7 @@ export async function crawlStockNews(searchQuery: string = '주식'): Promise<Ne
         console.log(`[Google News] ${googleArticles.length}개 수집 완료`);
         
         for (const article of googleArticles) {
-          if (allArticles.length >= 15) break;
+          if (allArticles.length >= 30) break;
           const urlKey = article.url.split('?')[0];
           if (!existingUrls.has(urlKey) && !existingTitles.has(article.title)) {
             allArticles.push(article);
@@ -590,7 +590,7 @@ export async function crawlStockNews(searchQuery: string = '주식'): Promise<Ne
       console.warn('⚠️ [통합 크롤링] 모든 소스에서 뉴스를 찾을 수 없습니다.');
     }
     
-    return allArticles.slice(0, 15);
+    return allArticles.slice(0, 30);
   } catch (error) {
     console.error('❌ [통합 크롤링] 오류:', error);
     if (error instanceof Error) {

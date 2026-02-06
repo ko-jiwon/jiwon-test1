@@ -77,7 +77,7 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
     
     // .articleSubject 셀렉터로 뉴스 항목 추출
     $('.articleSubject').each((i, elem) => {
-      if (newsItems.length >= 10) return false; // 최신 10개만
+      if (newsItems.length >= 30) return false; // 최신 30개만
       
       const $elem = $(elem);
       const titleEl = $elem.find('a');
@@ -128,7 +128,7 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
     if (newsItems.length < 5) {
       console.log('[네이버 금융] 추가 셀렉터 시도');
       $('dl dt a').each((i, elem) => {
-        if (newsItems.length >= 10) return false;
+        if (newsItems.length >= 30) return false;
         
         const $elem = $(elem);
         let title = $elem.text().trim();
@@ -171,7 +171,7 @@ async function crawlNaverFinanceNews(): Promise<any[]> {
     }
     
     console.log(`✅ [네이버 금융] ${newsItems.length}개의 뉴스를 수집했습니다.`);
-    return newsItems.slice(0, 10); // 최신 10개만
+    return newsItems.slice(0, 30); // 최신 30개만
   } catch (error) {
     console.error('[네이버 금융] 크롤링 오류:', error);
     if (error instanceof Error) {

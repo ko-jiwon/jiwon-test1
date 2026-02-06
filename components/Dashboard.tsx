@@ -6,7 +6,6 @@ import { Loader2, TrendingUp, Calendar, FileText, Sparkles, AlertCircle, Clock, 
 import { IPONews } from '@/types';
 import ArticleCard from './ArticleCard';
 import SearchBar from './SearchBar';
-import Link from 'next/link';
 
 export default function Dashboard() {
   const searchParams = useSearchParams();
@@ -449,13 +448,6 @@ export default function Dashboard() {
                 >
                   뉴스 새로고침
                 </button>
-                <div className="w-[1px] h-[20px] bg-[#C0C0C0]"></div>
-                <Link 
-                  href="/news" 
-                  className="text-sm text-[#4b4b4b] hover:text-[#333333] font-medium"
-                >
-                  전체 뉴스 보기
-                </Link>
               </div>
             </div>
 
