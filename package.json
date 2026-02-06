@@ -9,8 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.94.0",
     "cheerio": "^1.2.0",
     "iconv-lite": "^0.7.2",
     "lucide-react": "^0.344.0",

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { crawlEconomyNews, fetchArticleContent, crawlIPOSchedules } from '@/lib/crawler';
-import { summarizeNews } from '@/lib/gemini';
-import { supabase } from '@/lib/supabase';
+import { summarizeNews, isGeminiConfigured } from '@/lib/gemini';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { IPONews } from '@/types';
 
 /**
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!isGeminiConfigured()) {
       return NextResponse.json(
         { 
           error: 'Gemini API 키가 설정되지 않았습니다.',

@@ -580,7 +580,7 @@ export async function crawlStockNews(searchQuery: string = '주식'): Promise<Ne
     if (allArticles.length < 10) {
       try {
         console.log(`🔍 [2/3] 네이버 뉴스 검색 크롤링: ${enhancedQuery}`);
-        const naverArticles = await crawlNaverStockNews(enhancedQuery);
+        const naverArticles = await crawlNaverEconomyNews(enhancedQuery);
         console.log(`[네이버 검색] ${naverArticles.length}개 수집 완료`);
         
         for (const article of naverArticles) {

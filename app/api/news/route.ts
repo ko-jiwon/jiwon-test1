@@ -1,407 +1,98 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
-import { crawlNaverEconomyNews } from '@/lib/crawler';
 
-// Next.js 캐싱 비활성화
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-export const maxDuration = 10; // Vercel 타임아웃 명시 (10초)
 
-// 간단한 메모리 캐시 (30분 TTL)
-interface CacheEntry {
-  data: any;
-  timestamp: number;
-}
-
-const cache = new Map<string, CacheEntry>();
-const CACHE_TTL = 30 * 60 * 1000; // 30분
-
-/**
- * 네이버 금융 증시 뉴스 크롤링 (기본 뉴스)
- */
-async function crawlNaverFinanceNews(): Promise<any[]> {
+export async function GET(request: Request) {
   try {
-    const url = 'https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258';
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.get('q') || searchParams.get('query') || '경제';
     
-    console.log(`[네이버 금융] 크롤링 시작: ${url}`);
-    
-    // 타임아웃 설정 (8초) - Vercel 제한 고려
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const url = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(query + ' 경제')}&sort=1`;
     
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': 'https://finance.naver.com/',
-      },
-      signal: controller.signal,
+        'Accept-Language': 'ko-KR,ko;q=0.9'
+      }
     });
     
-    clearTimeout(timeoutId);
-    
     if (!response.ok) {
-      console.error(`[네이버 금융] HTTP 오류: ${response.status} ${response.statusText}`);
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP ${response.status}`);
     }
     
-    // 네이버는 EUC-KR 인코딩을 사용하므로 iconv-lite로 디코딩
     const buffer = await response.arrayBuffer();
     let html: string;
     
     try {
-      // EUC-KR로 디코딩 시도
       html = iconv.decode(Buffer.from(buffer), 'euc-kr');
-      console.log('[네이버 금융] EUC-KR 디코딩 성공');
-    } catch (eucKrError) {
-      // EUC-KR 디코딩 실패 시 UTF-8로 시도
-      console.warn('[네이버 금융] EUC-KR 디코딩 실패, UTF-8로 시도');
-      try {
-        html = iconv.decode(Buffer.from(buffer), 'utf-8');
-      } catch (utf8Error) {
-        // UTF-8도 실패하면 기본 텍스트로 시도
-        console.warn('[네이버 금융] UTF-8 디코딩 실패, 기본 텍스트로 시도');
-        html = await response.text();
-      }
-    }
-    
-    if (!html || html.length < 100) {
-      console.error('[네이버 금융] HTML 응답이 비어있거나 너무 짧습니다.');
-      return [];
+    } catch (e) {
+      html = iconv.decode(Buffer.from(buffer), 'utf-8');
     }
     
     const $ = cheerio.load(html);
     const newsItems: any[] = [];
     
-    // .articleSubject 셀렉터로 뉴스 항목 추출
-    $('.articleSubject').each((i, elem) => {
-      if (newsItems.length >= 30) return false; // 최신 30개만
+    $('.news_area').each((i, elem) => {
+      if (newsItems.length >= 30) return false;
       
-      const $elem = $(elem);
-      const titleEl = $elem.find('a');
-      let title = titleEl.text().trim();
-      // 공백 정규화 및 특수문자 제거 (한글은 유지)
-      title = title.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
-      let link = titleEl.attr('href') || '';
+      const title = $(elem).find('.news_tit').attr('title') || $(elem).find('.news_tit').text().trim();
+      let link = $(elem).find('.news_tit').attr('href') || '';
+      const source = $(elem).find('.info.press, .press').text().trim();
+      const date = $(elem).find('.info').last().text().trim();
+      const summary = $(elem).find('.news_dsc, .dsc_wrap').text().trim();
       
       // 링크 정규화
       if (link && !link.startsWith('http')) {
         if (link.startsWith('/')) {
-          link = 'https://finance.naver.com' + link;
+          link = `https://search.naver.com${link}`;
         } else {
-          link = 'https://finance.naver.com/' + link;
+          link = `https://search.naver.com/${link}`;
         }
       }
-      
-      // 요약 추출 (.articleSummary)
-      const $summary = $elem.next('.articleSummary');
-      let summary = $summary.text().trim() || '';
-      // 공백 정규화 및 특수문자 제거 (한글은 유지)
-      summary = summary.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
-      
-      // 날짜 추출 (부모 요소에서 .date 찾기)
-      const $parent = $elem.closest('dl, li, .newsList');
-      const date = $parent.find('.date, .wdate').text().trim() || '최근';
-      
-      // 언론사 추출
-      const source = $parent.find('.press, .press_name').text().trim() || '네이버 금융';
       
       if (title && link && title.length > 5) {
+        // 메인 페이지나 쓸모없는 링크 제외
+        if (link.includes('naver.com/main') || (link.includes('naver.com/') && !link.includes('/news/'))) {
+          return;
+        }
+        
         // 실제 뉴스 기사 URL인지 확인
-        if (link.includes('news.naver.com') || link.includes('/news/') || link.includes('article')) {
+        if (link.includes('news.naver.com') || link.includes('news/')) {
           newsItems.push({
-            title,
+            id: `${Date.now()}-${i}`,
+            title: title.trim(),
+            link: link,
             url: link,
-            link: link, // 호환성을 위해 둘 다 포함
-            source: source,
-            publishedAt: date,
-            snippet: summary,
-            summary: summary, // 호환성을 위해 둘 다 포함
+            source: source || '언론사',
+            publishedAt: date || '최근',
+            summary: summary || '',
+            snippet: summary || '',
           });
         }
       }
     });
     
-    // .articleSubject로 충분하지 않으면 추가 셀렉터 시도
-    if (newsItems.length < 5) {
-      console.log('[네이버 금융] 추가 셀렉터 시도');
-      $('dl dt a').each((i, elem) => {
-        if (newsItems.length >= 30) return false;
-        
-        const $elem = $(elem);
-        let title = $elem.text().trim();
-        // 공백 정규화 및 특수문자 제거 (한글은 유지)
-        title = title.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
-        let link = $elem.attr('href') || '';
-        
-        if (link && !link.startsWith('http')) {
-          if (link.startsWith('/')) {
-            link = 'https://finance.naver.com' + link;
-          } else {
-            link = 'https://finance.naver.com/' + link;
-          }
-        }
-        
-        const $parent = $elem.closest('dl');
-        let summary = $parent.find('dd').text().trim() || '';
-        // 공백 정규화 및 특수문자 제거 (한글은 유지)
-        summary = summary.replace(/\s+/g, ' ').replace(/[^\w\s가-힣.,!?()[\]{}:;'"\-]/g, '');
-        const date = $parent.find('.date, .wdate').text().trim() || '최근';
-        const source = $parent.find('.press, .press_name').text().trim() || '네이버 금융';
-        
-        if (title && link && title.length > 5) {
-          if (link.includes('news.naver.com') || link.includes('/news/') || link.includes('article')) {
-            // 중복 체크
-            if (!newsItems.some(item => item.title === title || item.url === link)) {
-              newsItems.push({
-                title,
-                url: link,
-                link: link,
-                source: source,
-                publishedAt: date,
-                snippet: summary,
-                summary: summary,
-              });
-            }
-          }
-        }
-      });
-    }
-    
-    console.log(`✅ [네이버 금융] ${newsItems.length}개의 뉴스를 수집했습니다.`);
-    return newsItems.slice(0, 30); // 최신 30개만
-  } catch (error) {
-    console.error('[네이버 금융] 크롤링 오류:', error);
-    if (error instanceof Error) {
-      console.error('[네이버 금융] 오류 상세:', error.message, error.stack);
-    }
-    return [];
-  }
-}
-
-/**
- * 주식 뉴스 빠른 크롤링 API
- * GET /api/news
- * 
- * 네이버 금융 증시 뉴스만 크롤링
- */
-export async function GET(request: NextRequest) {
-  const startTime = Date.now();
-  
-  try {
-    const { searchParams } = new URL(request.url);
-    const forceRefresh = searchParams.get('refresh') === 'true';
-    const searchQuery = searchParams.get('q') || '경제';
-    
-    console.log(`[뉴스 API] 요청 받음: q=${searchQuery}, refresh=${forceRefresh}`);
-    
-    // 검색어별로 캐시 키 생성
-    const cacheKey = `news_${searchQuery}`;
-    
-    // 캐시 확인 (forceRefresh가 true이면 캐시 무시)
-    if (!forceRefresh) {
-      const cached = cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        const elapsed = Date.now() - startTime;
-        console.log(`[뉴스 API] 캐시에서 반환 (${elapsed}ms)`);
-        return NextResponse.json({
-          success: true,
-          data: cached.data,
-          articles: cached.data, // 기존 코드 호환성
-          count: cached.data.length,
-          cached: true,
-          timestamp: cached.timestamp,
-        }, {
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        });
-      }
-    } else {
-      // forceRefresh가 true이면 캐시 삭제
-      cache.delete(cacheKey);
-      console.log('[뉴스 API] 캐시 삭제 (forceRefresh=true)');
-    }
-
-    console.log(`[뉴스 API] 크롤링 시작: "${searchQuery}"`);
-    
-    // 모든 검색어에 대해 네이버 경제 뉴스 검색
-    let newsItems: any[] = [];
-    
-    // 검색어로 경제 뉴스 크롤링 (타임아웃 8초)
-    const crawlPromise = crawlNaverEconomyNews(searchQuery);
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('크롤링 타임아웃 (8초 초과)')), 8000);
-    });
-    
-    try {
-      const searchResults = await Promise.race([crawlPromise, timeoutPromise]);
-      // NewsArticle을 API 응답 형식으로 변환
-      newsItems = searchResults.map((article: any) => ({
-        title: article.title,
-        url: article.url,
-        link: article.url,
-        source: article.source || '네이버 뉴스',
-        publishedAt: article.publishedAt || '최근',
-        snippet: article.snippet || '',
-        summary: article.snippet || '',
-      }));
-      
-      console.log(`[뉴스 API] ${newsItems.length}개의 경제 뉴스를 수집했습니다.`);
-      
-      // 30개 미만이면 경고
-      if (newsItems.length < 30) {
-        console.warn(`[뉴스 API] 경고: ${newsItems.length}개만 수집됨 (목표: 30개)`);
-      }
-    } catch (crawlError) {
-      console.error('[뉴스 API] 네이버 경제 뉴스 검색 오류:', crawlError);
-      
-      // 검색 실패 시 기본 경제 뉴스로 폴백
-      try {
-        console.log('[뉴스 API] 기본 경제 뉴스로 폴백');
-        const crawlPromise = crawlNaverFinanceNews();
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('크롤링 타임아웃 (8초 초과)')), 8000);
-        });
-        newsItems = await Promise.race([crawlPromise, timeoutPromise]);
-      } catch (fallbackError) {
-        // 폴백도 실패하면 캐시된 데이터 확인
-        const cached = cache.get(cacheKey);
-        if (cached) {
-          console.log('[뉴스 API] 크롤링 실패, 캐시된 데이터 반환');
-          return NextResponse.json({
-            success: true,
-            data: cached.data,
-            articles: cached.data,
-            count: cached.data.length,
-            cached: true,
-            error: '최신 크롤링 실패, 캐시된 데이터 반환',
-            timestamp: cached.timestamp,
-          }, {
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0',
-            },
-          });
-        }
-        throw crawlError;
-      }
-    }
-    
-    const elapsedTime = Date.now() - startTime;
-    console.log(`[뉴스 API] 크롤링 완료: ${newsItems.length}개 (${elapsedTime}ms)`);
-
-    if (!newsItems || newsItems.length === 0) {
-      console.warn('[뉴스 API] 크롤링 결과가 비어있음');
-      
-      // 캐시된 데이터가 있으면 반환
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        console.log('[뉴스 API] 빈 결과, 캐시된 데이터 반환');
-        return NextResponse.json({
-          success: true,
-          data: cached.data,
-          count: cached.data.length,
-          cached: true,
-          error: '최신 뉴스 없음, 캐시된 데이터 반환',
-          timestamp: cached.timestamp,
-        }, {
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        });
-      }
-      
-      return NextResponse.json({
-        success: false,
-        error: '뉴스를 가져오는데 실패했습니다',
-        data: [],
-        count: 0,
-        timestamp: Date.now(),
-      }, { status: 500 });
-    }
-
-    // 캐시에 저장
-    cache.set(cacheKey, {
-      data: newsItems,
-      timestamp: Date.now(),
-    });
-
-    // 오래된 캐시 정리 (메모리 관리)
-    if (cache.size > 10) {
-      const now = Date.now();
-      for (const [key, entry] of cache.entries()) {
-        if (now - entry.timestamp > CACHE_TTL) {
-          cache.delete(key);
-        }
-      }
-    }
-
-    // 호환성을 위해 articles 필드도 포함
     return NextResponse.json({
       success: true,
       data: newsItems,
-      articles: newsItems, // 기존 코드 호환성
-      count: newsItems.length,
-      cached: false,
-      timestamp: Date.now(),
-    }, {
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
+      articles: newsItems, // 호환성을 위해
+      count: newsItems.length
     });
+    
   } catch (error) {
-    const elapsed = Date.now() - startTime;
-    console.error(`[뉴스 API] 오류 (${elapsed}ms):`, error);
-    
-    if (error instanceof Error) {
-      console.error('[뉴스 API] 오류 상세:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
-    }
-    
-    // 캐시된 데이터가 있으면 반환 (에러 발생 시)
-    const cacheKey = 'naver_finance_news';
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      console.log('[뉴스 API] 에러 발생, 캐시된 데이터 반환');
-      return NextResponse.json({
-        success: true,
-        data: cached.data,
-        articles: cached.data, // 기존 코드 호환성
-        count: cached.data.length,
-        cached: true,
-        error: '최신 크롤링 실패, 캐시된 데이터 반환',
-        timestamp: cached.timestamp,
-      }, {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        },
-      });
-    }
-
-    return NextResponse.json({
-      success: false,
-      error: '뉴스를 가져오는데 실패했습니다',
-      details: error instanceof Error ? error.message : '알 수 없는 오류',
-      data: [],
-      articles: [], // 기존 코드 호환성
-      count: 0,
-      timestamp: Date.now(),
-    }, { status: 500 });
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to fetch news', 
+        data: [],
+        articles: []
+      },
+      { status: 500 }
+    );
   }
 }

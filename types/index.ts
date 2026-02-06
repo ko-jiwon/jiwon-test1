@@ -4,9 +4,12 @@ export interface IPONews {
   summary: string;
   schedule?: string;
   link: string;
+  url?: string; // link와 동일한 용도
   created_at?: string;
+  publishedAt?: string; // 발행일 (크롤링된 뉴스용)
   keywords?: string;
   source?: string; // 출처 (네이버 뉴스, Google News 등)
+  snippet?: string; // summary와 동일한 용도
   // PRD 요구사항: 상세 IPO 정보
   stock_name?: string; // 종목명
   confirmed_price?: string; // 확정공모가
