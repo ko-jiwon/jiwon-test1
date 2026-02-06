@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Loader2, TrendingUp, Calendar, FileText, Sparkles, AlertCircle, Clock, ArrowRight } from 'lucide-react';
 import { IPONews } from '@/types';
 import ArticleCard from './ArticleCard';
-import SearchBar from './SearchBar';
 
 export default function DashboardContent() {
   const searchParams = useSearchParams();
@@ -14,10 +13,8 @@ export default function DashboardContent() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [upcomingSchedules, setUpcomingSchedules] = useState<IPONews[]>([]);
-  const [searchQuery, setSearchQuery] = useState<string>('경제');
-  const lastSearchRef = useRef<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('주식');
+  const lastSearchRef = useRef<string>('주식');
 
   // 타임아웃이 있는 fetch 헬퍼 함수 (캐시 무시)
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout: number = 10000): Promise<Response> => {
@@ -53,7 +50,7 @@ export default function DashboardContent() {
       console.log('[Dashboard] 빠른 뉴스 크롤링 시작');
       
       // 타임아웃 10초로 설정, 항상 최신 데이터 가져오기
-      const response = await fetchWithTimeout('/api/news?q=경제&refresh=true', {}, 10000);
+      const response = await fetchWithTimeout('/api/news?q=주식', {}, 10000);
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -75,11 +72,12 @@ export default function DashboardContent() {
       
       if (data.articles && data.articles.length > 0) {
         // 크롤링된 뉴스를 임시로 표시 (DB 저장은 백그라운드에서)
-        const newsArticles: IPONews[] = data.articles.map((article: any) => ({
+        const newsArticles: IPONews[] = (data.articles || data.data || []).map((article: any) => ({
           title: article.title || '제목 없음',
-          summary: article.snippet || article.summary || '',
-          link: article.url || article.link || '',
+          summary: article.summary || article.snippet || '',
+          link: article.link || article.url || '',
           source: article.source || '뉴스',
+          publishedAt: article.publishedAt || '최근',
           created_at: new Date().toISOString(),
         }));
         
@@ -93,8 +91,6 @@ export default function DashboardContent() {
           console.log(`✅ 목표 달성: 30개 뉴스 수집 완료`);
         }
         
-        // 백그라운드에서 DB에 저장 (사용자 경험을 위해 비동기)
-        saveToDatabaseInBackground();
         return true;
       } else {
         console.warn('[Dashboard] 크롤링된 뉴스가 없습니다.');
@@ -113,58 +109,12 @@ export default function DashboardContent() {
     }
   };
 
-  // 백그라운드에서 DB에 저장
-  const saveToDatabaseInBackground = async () => {
-    try {
-      // 비동기로 실행 (사용자 경험을 위해 await 하지 않음)
-      fetch('/api/crawl', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-        },
-        body: JSON.stringify({ searchQuery: '경제' }),
-      }).then(() => {
-        console.log('[Dashboard] 백그라운드 DB 저장 완료');
-      }).catch((err) => {
-        console.error('[Dashboard] 백그라운드 DB 저장 오류:', err);
-      });
-    } catch (err) {
-      console.error('[Dashboard] 백그라운드 DB 저장 오류:', err);
-    }
-  };
-
-  // 백그라운드에서 뉴스 새로고침
-  const refreshNewsInBackground = async () => {
-    try {
-      const response = await fetchWithTimeout('/api/news?q=경제&refresh=true', {}, 10000);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.articles && data.articles.length > 0) {
-          const newsArticles: IPONews[] = data.articles.map((article: any) => ({
-            title: article.title || '제목 없음',
-            summary: article.snippet || article.summary || '',
-            link: article.url || article.link || '',
-            source: article.source || '뉴스',
-            created_at: new Date().toISOString(),
-          }));
-          setArticles(newsArticles);
-          console.log('[Dashboard] 백그라운드 새로고침 완료');
-        }
-      }
-    } catch (err) {
-      console.error('[Dashboard] 백그라운드 새로고침 오류:', err);
-      // 백그라운드 오류는 조용히 처리
-    }
-  };
 
   // 검색어로 뉴스 크롤링하는 함수
   const searchNews = async (query: string) => {
     setLoading(true);
     setInitialLoading(true);
     setError(null);
-    setConnectionError(null);
     setSuccessMessage(null);
     setSearchQuery(query);
     
@@ -172,7 +122,7 @@ export default function DashboardContent() {
       console.log(`[Dashboard] 검색 시작: "${query}"`);
       
       // 검색어로 뉴스 크롤링 (항상 최신 데이터)
-      const response = await fetchWithTimeout(`/api/news?q=${encodeURIComponent(query)}&refresh=true`, {}, 15000);
+      const response = await fetchWithTimeout(`/api/news?q=${encodeURIComponent(query)}`, {}, 15000);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -185,22 +135,21 @@ export default function DashboardContent() {
       }
       
       if (data.articles && data.articles.length > 0) {
-        const newsArticles: IPONews[] = data.articles.map((article: any) => ({
+        const newsArticles: IPONews[] = (data.articles || data.data || []).map((article: any) => ({
           title: article.title || '제목 없음',
-          summary: article.snippet || article.summary || '',
-          link: article.url || article.link || '',
+          summary: article.summary || article.snippet || '',
+          link: article.link || article.url || '',
           source: article.source || '뉴스',
+          publishedAt: article.publishedAt || '최근',
           created_at: new Date().toISOString(),
         }));
         
         setArticles(newsArticles);
-        setUpcomingSchedules([]);
         setSuccessMessage(`"${query}" 검색 결과 ${newsArticles.length}개의 뉴스를 찾았습니다.`);
         setTimeout(() => setSuccessMessage(null), 3000);
         console.log(`✅ ${newsArticles.length}개의 뉴스를 검색했습니다.`);
       } else {
         setArticles([]);
-        setUpcomingSchedules([]);
         setError(`"${query}"에 대한 뉴스를 찾을 수 없습니다.`);
       }
     } catch (err) {
@@ -208,7 +157,6 @@ export default function DashboardContent() {
       const errorMsg = err instanceof Error ? err.message : '뉴스 검색 중 오류가 발생했습니다.';
       setError(errorMsg);
       setArticles([]);
-      setUpcomingSchedules([]);
     } finally {
       setLoading(false);
       setInitialLoading(false);
@@ -218,7 +166,7 @@ export default function DashboardContent() {
   // URL 쿼리 파라미터 변경 감지하여 검색 실행
   useEffect(() => {
     const queryParam = searchParams.get('q');
-    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '경제';
+    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
     
     // 이전 검색어와 다를 때만 검색 실행 (무한 루프 방지)
     if (searchTerm !== lastSearchRef.current) {
@@ -231,7 +179,7 @@ export default function DashboardContent() {
   // 초기 로딩 (마운트 시 한 번만)
   useEffect(() => {
     const queryParam = searchParams.get('q');
-    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '경제';
+    const searchTerm = queryParam ? decodeURIComponent(queryParam) : '주식';
     
     // 초기 로딩: 검색어로 뉴스 로드
     console.log(`[Dashboard] 초기 로딩: "${searchTerm}"`);
@@ -239,135 +187,10 @@ export default function DashboardContent() {
     searchNews(searchTerm);
   }, []);
 
-  const fetchArticles = async () => {
-    try {
-      setError(null);
-      // 성능 최적화: limit 파라미터 추가
-      const response = await fetch('/api/articles?sort=latest&limit=10', {
-        // 캐시 활용
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `서버 오류 (${response.status})`);
-      }
-
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      if (data.articles) {
-        // 최신순으로 정렬하고 최대 10개만 표시
-        const sortedArticles = [...data.articles]
-          .sort((a, b) => {
-            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-            return dateB - dateA; // 최신순 (내림차순)
-          })
-          .slice(0, 10); // 최대 10개만
-        setArticles(sortedArticles);
-        
-        // 일정 추출
-        const schedules = sortedArticles
-          .filter(article => article.schedule && article.schedule !== '정보 없음')
-          .slice(0, 5);
-        setUpcomingSchedules(schedules);
-        
-        console.log(`✅ ${sortedArticles.length}개의 기사를 불러왔습니다.`);
-      } else {
-        setArticles([]);
-        setUpcomingSchedules([]);
-        console.log('⚠️ 불러온 데이터가 없습니다.');
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '기사를 불러오는 중 오류가 발생했습니다.';
-      console.error('기사 불러오기 오류:', err);
-      
-      // 연결 에러 구분
-      if (errorMessage.includes('Supabase') || errorMessage.includes('연결') || errorMessage.includes('환경 변수')) {
-        setConnectionError('데이터베이스 연결에 실패했습니다. Vercel 환경 변수를 확인해주세요.');
-      } else {
-        setError(errorMessage);
-      }
-      
-      setArticles([]);
-      setUpcomingSchedules([]);
-    }
-  };
-
-  const handleSearch = async (searchQuery: string, showSuccessMessage: boolean = true) => {
-    setLoading(true);
-    setError(null);
-    setConnectionError(null);
-    if (showSuccessMessage) {
-      setSuccessMessage(null);
-    }
-
-    try {
-      const response = await fetch('/api/crawl', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ searchQuery }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // 상세한 에러 메시지 표시
-        const errorMsg = data.error || data.details || '크롤링 중 오류가 발생했습니다.';
-        throw new Error(errorMsg);
-      }
-
-      // 성공 메시지 표시 (showSuccessMessage가 true일 때만)
-      if (showSuccessMessage && data.message) {
-        setSuccessMessage(`${data.message} (${data.savedCount}개 저장됨)`);
-        setTimeout(() => setSuccessMessage(null), 5000);
-      }
-
-      // 저장된 기사가 있으면 목록 새로고침
-      if (data.savedCount > 0 || data.totalCrawled > 0) {
-        await fetchArticles();
-      }
-      // 크롤링된 뉴스가 없어도 에러 메시지 표시하지 않음
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
-      console.error('크롤링 오류:', err);
-      
-      // 연결 에러 구분
-      if (errorMessage.includes('Supabase') || errorMessage.includes('환경 변수') || errorMessage.includes('연결')) {
-        setConnectionError('데이터베이스 연결에 실패했습니다. Vercel 환경 변수를 확인해주세요.');
-      } else {
-        setError(errorMessage);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Connection Error Message */}
-        {connectionError && (
-          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-orange-800 font-medium mb-1">데이터베이스 연결 오류</p>
-                <p className="text-orange-700 text-sm">{connectionError}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Success Message */}
         {successMessage && (
           <div className="mb-6 p-4 bg-[#3182F6]/10 border border-[#3182F6]/20 rounded-2xl text-[#3182F6] text-sm font-medium animate-fade-in">
@@ -390,7 +213,7 @@ export default function DashboardContent() {
                 <Loader2 className="w-6 h-6 text-[#3182F6] animate-spin" />
               </div>
               <p className="text-gray-500 text-sm">
-                      {initialLoading ? '경제 뉴스를 불러오는 중...' : '뉴스를 검색하고 요약하는 중...'}
+                      {initialLoading ? '주식 뉴스를 불러오는 중...' : '뉴스를 검색하는 중...'}
               </p>
             </div>
             {/* Skeleton UI */}
@@ -404,11 +227,11 @@ export default function DashboardContent() {
           </div>
         )}
 
-        {/* 최신 경제 뉴스 리스트 */}
+        {/* 최신 주식 뉴스 리스트 */}
         {!loading && !initialLoading && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">경제 뉴스</h2>
+              <h2 className="text-xl font-bold text-gray-900">주식 뉴스</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
@@ -416,7 +239,7 @@ export default function DashboardContent() {
                     setError(null);
                     try {
                       // 빠른 뉴스 API 사용 (타임아웃 10초)
-                      const response = await fetchWithTimeout('/api/news?q=경제&refresh=true', {}, 10000);
+                      const response = await fetchWithTimeout(`/api/news?q=${encodeURIComponent(searchQuery)}`, {}, 10000);
                       
                       if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -471,7 +294,7 @@ export default function DashboardContent() {
                   뉴스가 없습니다
                 </h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  경제 관련 뉴스를 찾을 수 없습니다.
+                  주식 관련 뉴스를 찾을 수 없습니다.
                 </p>
                 <button
                   onClick={async () => {

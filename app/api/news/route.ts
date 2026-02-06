@@ -5,17 +5,28 @@ import iconv from 'iconv-lite';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+interface NewsItem {
+  id: string;
+  title: string;
+  link: string;
+  source: string;
+  publishedAt: string;
+  summary: string;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const query = searchParams.get('q') || searchParams.get('query') || '경제';
+    const query = searchParams.get('q') || searchParams.get('query') || '주식';
     
-    const url = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(query + ' 경제')}&sort=1`;
+    console.log('🔍 뉴스 검색:', query);
+    
+    const url = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(query)}&sort=1`;
     
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
         'Accept-Language': 'ko-KR,ko;q=0.9'
       }
     });
@@ -25,25 +36,20 @@ export async function GET(request: Request) {
     }
     
     const buffer = await response.arrayBuffer();
-    let html: string;
-    
-    try {
-      html = iconv.decode(Buffer.from(buffer), 'euc-kr');
-    } catch (e) {
-      html = iconv.decode(Buffer.from(buffer), 'utf-8');
-    }
-    
+    const html = iconv.decode(Buffer.from(buffer), 'utf-8');
     const $ = cheerio.load(html);
-    const newsItems: any[] = [];
+    
+    const newsItems: NewsItem[] = [];
     
     $('.news_area').each((i, elem) => {
       if (newsItems.length >= 30) return false;
       
-      const title = $(elem).find('.news_tit').attr('title') || $(elem).find('.news_tit').text().trim();
-      let link = $(elem).find('.news_tit').attr('href') || '';
-      const source = $(elem).find('.info.press, .press').text().trim();
-      const date = $(elem).find('.info').last().text().trim();
-      const summary = $(elem).find('.news_dsc, .dsc_wrap').text().trim();
+      const titleElem = $(elem).find('.news_tit');
+      const title = titleElem.attr('title') || titleElem.text().trim();
+      let link = titleElem.attr('href') || '';
+      const source = $(elem).find('.info.press, .press').text().trim() || '언론사';
+      const date = $(elem).find('.info').last().text().trim() || '최근';
+      const summary = $(elem).find('.news_dsc, .dsc_wrap').text().trim() || '';
       
       // 링크 정규화
       if (link && !link.startsWith('http')) {
@@ -63,32 +69,35 @@ export async function GET(request: Request) {
         // 실제 뉴스 기사 URL인지 확인
         if (link.includes('news.naver.com') || link.includes('news/')) {
           newsItems.push({
-            id: `${Date.now()}-${i}`,
-            title: title.trim(),
-            link: link,
-            url: link,
-            source: source || '언론사',
-            publishedAt: date || '최근',
-            summary: summary || '',
-            snippet: summary || '',
+            id: `news-${Date.now()}-${i}`,
+            title,
+            link,
+            source,
+            publishedAt: date,
+            summary
           });
         }
       }
     });
     
+    console.log(`✅ ${newsItems.length}개의 뉴스 수집 완료`);
+    
     return NextResponse.json({
       success: true,
       data: newsItems,
       articles: newsItems, // 호환성을 위해
-      count: newsItems.length
+      count: newsItems.length,
+      query
     });
     
-  } catch (error) {
-    console.error('API Error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+    console.error('❌ 크롤링 에러:', errorMessage);
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to fetch news', 
+        error: errorMessage,
         data: [],
         articles: []
       },

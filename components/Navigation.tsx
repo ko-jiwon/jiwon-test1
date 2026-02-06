@@ -51,7 +51,7 @@ export default function Navigation() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="경제 뉴스 검색 (예: 삼성전자, 금리, 환율)"
+          placeholder="주식 뉴스 검색 (예: 삼성전자, 2월 증시, 반도체)"
           className="w-[400px] px-4 py-2 border border-gray-300 rounded-[6px] text-[14px] placeholder:text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
         <button
